@@ -337,12 +337,7 @@ class SDFS:
             while True:
                 conn, addr = s.accept()
                 with conn:
-                    data = bytearray()
-                    while True:
-                        packet = conn.recv(32 * 1024)
-                        if not packet:
-                            break
-                        data.extend(packet)
+                    data = self.__recv_message(conn)
 
                     message: Message = pickle.loads(data)
                     if message.message_type == "REQ WRITE":
@@ -447,12 +442,7 @@ class SDFS:
             while True:
                 conn, addr = s.accept()
                 with conn:
-                    data = bytearray()
-                    while True:
-                        packet = conn.recv(32 * 1024)  # 4 kb
-                        if not packet:
-                            break
-                        data.extend(packet)
+                    data = self.__recv_message(conn)
 
                     message: Message = pickle.loads(data)
                     if message.message_type == "CLIENT WRITE":
@@ -561,12 +551,7 @@ class SDFS:
             try:
                 # Recv chunk
                 s.settimeout(1.2)
-                data = bytearray()
-                while True:
-                    packet = s.recv(32 * 1024)  # 32 kb
-                    if not packet:
-                        break
-                    data.extend(packet)
+                data = self.__recv_message(s)
                 chunk_message: Message = pickle.loads(data)
                 return chunk_message.content["payload"]
             except socket.timeout:
@@ -840,6 +825,16 @@ class SDFS:
         else:
             return os.path.join(self.dir, self.ft._remote_to_sdfsfname(remote, version))
 
+    @staticmethod
+    def __recv_message(conn: socket.socket) -> bytes:
+        data = bytearray()
+        while True:
+            packet = conn.recv(32 * 1024)
+            if not packet:
+                break
+            data.extend(packet)
+        return data
+   
     @staticmethod
     def __read_from_local(fpath: str, off: int = 0) -> bytes:
         """Defines how to read from ``fpath``."""

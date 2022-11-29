@@ -6,17 +6,20 @@ from typing import List, Dict
 @dataclass
 class Query:
     id: int = 0
+    job_id: int = 0
     worker: int = -1  # worker id
     model: int = -1  # model id
     input_file: str = None
-    output_file: str = None
-    completion_time: float = 0.0
+    result: str = None  # inference result
+    processing_time: float = 0.0
+
+    def __eq__(self, __o: object) -> bool:
+        return self.id == __o.id
 
 
 class QueryTable:
     
     def __init__(self) -> None:
-        self.completed = 0
         self.idle_queries: List[Query] = []
         self.hold_queries: List[Query] = []
         self.scheduled_queries: List[Query] = []
@@ -24,6 +27,10 @@ class QueryTable:
 
     def __len__(self) -> int:
         return len(self.idle_queries)
+
+    @property
+    def completed(self) -> int:
+        return len(self.completed_queries)
 
     def get_idle_queries(self, n_queries: int) -> List[Query]:
         n_queries = min(n_queries, len(self.idle_queries))
@@ -40,6 +47,11 @@ class QueryTable:
             self.scheduled_queries.append(query)
             self.hold_queries.remove(query)
 
+    def mark_as_completed(self, queries: List[Query]):
+        for query in queries:
+            self.completed_queries.append(query)
+            self.scheduled_queries.remove(query)
+
 
 @dataclass
 class Job:
@@ -47,6 +59,7 @@ class Job:
     name: str = None  # job name
     queries: QueryTable = QueryTable()
     model: int = -1  # model id
+    output_file: str = None
 
     start_time: float = -1
 
@@ -71,6 +84,12 @@ class JobTable:
 
     def __iter__(self):
         yield from self.jobs
+
+    def __getitem(self, job_id: int) -> Job:
+        for job in self.jobs:
+            if job.id == job_id:
+                return job
+        raise ValueError(f"No job with id {job_id}")
 
     def append(self, job: Job):
         self.jobs.append(job)
