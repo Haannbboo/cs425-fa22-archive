@@ -726,6 +726,14 @@ class SDFS:
         confirmed = self.write_to(message, self.master, PORT_TCP_CLIENTMASTER, confirm=True)
         return confirmed
 
+    def join(self):
+        assigned_id, ft = self.fd.join()
+        if assigned_id != -1:
+            self.id = assigned_id
+        if ft is not None:
+            self.ft = ft
+        return self.id
+
     def commander(self):
         """Receives and responds to user command.
 
@@ -780,11 +788,7 @@ class SDFS:
             ### FD commands ###
             elif command.startswith("join"):
                 self.__clear_sdfs_directory()  # clear stall content
-                assigned_id, ft = self.fd.join()
-                if assigned_id != -1:
-                    self.id = assigned_id
-                if ft is not None:
-                    self.ft = ft
+                self.join()
 
             elif command.startswith("leave"):
                 self.fd.leave()

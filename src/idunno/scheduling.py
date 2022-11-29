@@ -1,15 +1,17 @@
-from .utils import Job, JobTable
+from typing import List
+
+from .utils import JobTable, Job
 
 
-class NaiveScheduler:
+class FairTimeScheduler:
 
-    def schedule(self, new_job: Job, old_jobs: JobTable, n_workers: int) -> JobTable:
-        n_jobs = len(old_jobs) + 1
-        n = n_workers // n_jobs
-        new_job_workers = []
-        for job in old_jobs:
-            new_job_workers.extend(job.scheduled_workers[n:][:])
-            job.scheduled_workers = job.scheduled_workers[:n]
-        new_job.scheduled_workers = new_job_workers
-        old_jobs.append(new_job)
-        return old_jobs
+    def schedule(self, jobs: JobTable, n_queries: int = 1) -> Job:
+        """Selects the running job with lowest ``rate`` property."""
+        selected_job = None
+        min_rate = 100000  # arbitrary large number
+        for job in jobs:
+            if job.rate < min_rate and job.running and len(job.queries) > 0:
+                min_rate = job.rate
+                selected_job = job
+
+        return selected_job

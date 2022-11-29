@@ -1,30 +1,53 @@
-from typing import Dict, List
+import pickle
+import socket
+from typing import Dict, List, Any
 
-from src.sdfs import SDFS
-from .scheduling import NaiveScheduler
+from src.sdfs import SDFS, Message
+from .scheduling import FairTimeScheduler
 from .utils import JobTable, Job, Query
 
 
-class IdunnoCoordinator:
+class IdunnoCoordinator(SDFS):
 
     def __init__(self, standby: bool = False) -> None:
+        super().__init__()  # init sdfs
         self.jobs = JobTable()
-        self.scheduler = NaiveScheduler()
-        self.sdfs = SDFS()
+        self.scheduler = FairTimeScheduler()
 
         self.standby = standby
-
-    @property
-    def n_workers(self) -> int:
-        # TODO: handle when coordinator fails
-        return len(self.sdfs.all_processes) - 2
 
     def submit_job(self, job: Job) -> bool:
         if not self.__admission_control(job):
             return False
-        self.jobs = self.scheduler.schedule(job, self.jobs, self.n_workers)
 
-        placement = self.__placement_policy(self, self.jobs)
+        self.jobs.append(job)
+
+    def send_queries(self, queries: List[Query], to_id: int, s: socket.socket) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:  # tcp
+            addr = (self.all_processes[to_id].host, self.all_processes[to_id].host)
+            message = self.__generate_message("RESP QUERIES", content={"queries": queries})
+            try:
+                s.connect(addr)
+                s.sendall(pickle.dumps(message))
+                s.shutdown(socket.SHUT_WR)
+            except socket.error:
+                return False
+            
+            try:
+                s.settimeout(1)
+                ack = s.recv(32)
+            except socket.timeout:
+                return False
+        return True
+
+    def recv_completion(self):
+        pass
+
+    def job_dispatch(self):
+        pass
+
+    def job_collection(self):
+        pass
 
     def run(self):
         pass
@@ -33,5 +56,3 @@ class IdunnoCoordinator:
         """Decides if ``new_job`` could be admitted."""
         return True
 
-    def __placement_policy(self, jobs: JobTable) -> Dict[int, List[Query]]:
-        pass
