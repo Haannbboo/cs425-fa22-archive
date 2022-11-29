@@ -10,6 +10,9 @@ INTRODUCER_HOST = "fa22-cs425-1301.cs.illinois.edu"
 DNS_SERVER_HOST = "fa22-cs425-1301.cs.illinois.edu"
 DNS_SERVER_PORT = 8769
 
+PORT_REQUEST_JOB = 10234  # worker request job from this
+PORT_COMPLETE_JOB = 10235  # worker report job completion
+
 # Test ports #
 PORT_TEST_UDPSERVER = 9213
 
