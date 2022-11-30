@@ -34,6 +34,27 @@ class IdunnoNode(SDFS):
     def turnOff(self):
         pass
     
+    #only receive train request
+    def receive_train_request(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("", PRE_TRAIN_PORT))
+            s.listen()
+            
+            while True:
+                conn, _ = s.accept
+                with conn:
+                    data = conn.recv(4096)
+                    message: Message = pickle.loads(data)
+                    
+                    if message.message_type == "REQ TRAIN":
+                        model_name = message.content["model_name"]
+                        self.pretrain(model_name)
+                    
+                        
+                            
+                    
+    
     def inference_result(self, query: Query):
         model_name = query.model
         extractor, model = self.model_map[model_name]
@@ -83,7 +104,7 @@ class IdunnoNode(SDFS):
             addr = (coordinator_host, PORT_COMPLETE_JOB)
             complete_message = self.__generate_message("COMPLETE QUERIES", content={"queries": queries})
             try: 
-                s.connect()
+                s.connect(addr)
                 s.sendall(pickle.dumps(complete_message))
                 s.shutdown(socket.SHUT_WR)
                 self.request_job(coordinator_host, coordinator_port)
