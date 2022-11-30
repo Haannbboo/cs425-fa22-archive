@@ -29,6 +29,10 @@ class QueryTable:
         return len(self.idle_queries)
 
     @property
+    def total_queries(self) -> int:
+        return len(self.idle_queries) + len(self.hold_queries) + len(self.scheduled_queries) + len(self.completed_queries)
+
+    @property
     def completed(self) -> int:
         return len(self.completed_queries)
 
@@ -41,6 +45,11 @@ class QueryTable:
         if len(scheduled) == 0:
             raise ValueError("Something werid with scheduling idle queries... n_queries should not be zero.")
         return scheduled 
+
+    def mark_as_idle(self, queries: List[Query]):
+        for query in queries:
+            self.idle_queries.append(query)
+            self.hold_queries.remove(query)
 
     def mark_as_scheduled(self, queries: List[Query]):
         for query in queries:
@@ -58,13 +67,15 @@ class Job:
     id: int = 0  # job id
     name: str = None  # job name
     queries: QueryTable = QueryTable()
-    model: int = -1  # model id
+    model: str = None  # model name, e.g. resnet-50
     output_file: str = None
+    client: tuple = None  # issuer's host, port
 
     start_time: float = -1
 
     # States
     running: bool = True
+    completed: bool = False
 
     @property
     def rate(self) -> float:

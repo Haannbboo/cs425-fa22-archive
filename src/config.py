@@ -10,8 +10,11 @@ INTRODUCER_HOST = "fa22-cs425-1301.cs.illinois.edu"
 DNS_SERVER_HOST = "fa22-cs425-1301.cs.illinois.edu"
 DNS_SERVER_PORT = 8769
 
+PORT_IDUNNO_CLIENT = 10086
 PORT_REQUEST_JOB = 10234  # worker request job from this
 PORT_COMPLETE_JOB = 10235  # worker report job completion
+PORT_START_WORKING = 10300  # worker listens to this port to know if they can be lazy
+PORT_STANDBY_UPDATE = 10310  # communication between coordinator & standby
 
 # Test ports #
 PORT_TEST_UDPSERVER = 9213

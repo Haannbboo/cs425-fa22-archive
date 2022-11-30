@@ -1,6 +1,7 @@
 import os
 import pickle
 import socket
+import time
 from typing import List
 
 from src.config import *
@@ -16,13 +17,72 @@ class IdunnoCoordinator(SDFS):
         self.jobs = JobTable()
         self.scheduler = FairTimeScheduler()
 
-        self.standby = standby
+        self.available_workers: List[int] = []
+
+        self.coordinator_addr = None
+        self.standby_addr = None
+        self.is_standby = standby
 
     def submit_job(self, job: Job) -> bool:
         if not self.__admission_control(job):
             return False
 
+        if not self.__notify_new_job(job):
+            return False
         self.jobs.append(job)
+        
+        # Tell avaialble workers that a new job arrived,
+        # start working!
+        message = self.__generate_message("START")
+        self.multicast(message, set(self.available_workers), PORT_START_WORKING)
+
+        return True
+
+    def standby_recev(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("", PORT_STANDBY_UPDATE))
+            s.listen()
+
+            while True:
+                if not self.is_standby:
+                    time.sleep(1)
+                    continue
+                    
+                conn, addr = s.accept()
+                with conn:
+                    data = self.__recv_message(conn)
+                    message: Message = pickle.loads(data)
+
+                    if message.message_type == "QUERIES UPDATE":
+                        # Some queries have completed processing
+                        queries: List[Query] = message.content["queries"]  # len > 0
+                        job: Job = self.jobs[queries[0].job_id]
+                        for query in queries:  # move from idle to completed
+                            job.queries.completed_queries.append(query)
+                            job.queries.idle_queries.remove(query)
+                        confirm = self.__generate_message("UPDATE CONFIRM")
+                        conn.sendall(pickle.dumps(confirm))
+
+                    elif message.message_type == "JOB UPDATE":
+                        job: Job = message.content["job"]
+                        self.jobs.append(job)
+                        confirm = self.__generate_message("UPDATE CONFIRM")
+                        conn.sendall(pickle.dumps(confirm))
+
+    def client_server(self):
+        """Serves client's request."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("", PORT_IDUNNO_CLIENT))
+            s.listen()
+
+            while True:
+                conn, addr = s.accept()
+                with conn:
+                    data = self.__recv_message(conn)
+                    message: Message = pickle.loads(data)
+
 
     def job_dispatch(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -33,16 +93,23 @@ class IdunnoCoordinator(SDFS):
             while True:
                 conn, addr = s.accept()
                 with conn:
-                    data = self.__recv_message(s)
+                    data = self.__recv_message(conn)
                     message: Message = pickle.loads(data)
 
                     if message.message_type == "REQ QUERIES":
                         n_queries = message.content["n_queries"]
                         job = self.scheduler.schedule(self.jobs, n_queries)
-                        queries = job.queries.get_idle_queries(n_queries)
-                        ack = self.send_queries(queries, message.host, message.port)
-                        if ack:
-                            job.queries.mark_as_scheduled(queries)
+                        if job is None:  # no active job
+                            self.send_stop(conn)  # tell worker to rest
+                            self.available_workers.append(message.id)
+                        else:
+                            queries = job.queries.get_idle_queries(n_queries)
+                            ack = self.send_queries(queries, conn)
+                            if ack:  # if worker has received works to do
+                                job.queries.mark_as_scheduled(queries)
+                                self.jobs.placement[message.id] = queries
+                            else:  # worker doesn't receive the job
+                                job.queries.mark_as_idle(queries)  # put work back to pool
 
 
     def job_collection(self):
@@ -54,41 +121,49 @@ class IdunnoCoordinator(SDFS):
             while True:
                 conn, addr = s.accept()
                 with conn:
-                    data = self.__recv_message(s)
+                    data = self.__recv_message(conn)
                     message: Message = pickle.loads(data)
 
                     if message.message_type == "COMPLETE QUERIES":
                         self.recv_completion(message)
 
 
-    def send_queries(self, queries: List[Query], worker_host: str, worker_port: int) -> bool:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:  # tcp
-            addr = (worker_host, worker_port)
-            message = self.__generate_message("RESP QUERIES", content={"queries": queries})
-            try:
-                s.connect(addr)
-                s.sendall(pickle.dumps(message))
-                s.shutdown(socket.SHUT_WR)
-            except socket.error:
-                return False
-            
-            try:
-                s.settimeout(1)
-                ack = s.recv(32)
-            except socket.timeout:
-                return False
+    def send_queries(self, queries: List[Query], s: socket.socket) -> bool:
+        message = self.__generate_message("RESP QUERIES", content={"queries": queries})
+        try:
+            s.sendall(pickle.dumps(message))
+            s.shutdown(socket.SHUT_WR)
+        except socket.error:
+            return False
+        
+        try:
+            s.settimeout(1)
+            ack = s.recv(32)
+        except socket.timeout:
+            return False
         return True
+
+    def send_stop(self, s: socket.socket) -> None:
+        message = self.__generate_message("STOP")
+        s.sendall(message)
+        s.shutdown(socket.SHUT_WR)
 
     def recv_completion(self, message: Message) -> bool:
         queries: List[Query] = message.content["queries"]
         if len(queries) == 0:
-            False
+            return False
 
         job: Job = self.jobs[queries[0].job_id]
         # Write first, then update JobTable.
         # Check result file upon completion and remove duplicates.
-        if self.__write_queries_result(queries, job):
+        if self.__write_queries_result(queries, job) and self.__notify_queries_completed(queries):
             job.queries.mark_as_completed(queries)
+
+        if self.__job_completed(job):
+            self.__drop_result_duplicates(job)  # there should only be duplicates
+            if self.__notify_client_job_completed(job):  # if client confirmed job completion
+                self.__handle_job_complete(job)
+
         return True
 
     def run(self):
@@ -99,13 +174,13 @@ class IdunnoCoordinator(SDFS):
         return True
 
     def __write_queries_result(self, queries: List[Query], job: Job) -> bool:
-        fname = job.output_file
+        fname = self.__job_to_sdfs_fname(job)
         success = self.get(fname, fname)
         if not success or not self.__local_file_ready(fname):
             print(f"[ERROR] Failed to write queries result to sdfsfile {fname}")
             return False
 
-        result = [f"{self.__query_to_output_key(query)} |--| {query.result}\n" 
+        result = [f"{query.id}) {self.__query_to_output_key(query)} |--| {query.result}\n" 
                     for query in queries if query.result is not None]
         if len(result) == 0:
             return False
@@ -115,6 +190,68 @@ class IdunnoCoordinator(SDFS):
         
         return self.put(fname, fname)
 
+    def __job_completed(self, job: Job) -> bool:
+        """Detects if ``job`` has completed or not. 
+        It's ok to have duplicates in the result file at this stage."""
+        return job.queries.total_queries == job.queries.completed
+
+    def __handle_job_complete(self, job: Job):
+        """Defines what to do when a job is completed and confirmed by the client."""
+        job.completed = True
+
+    def __drop_result_duplicates(self, job: Job) -> bool:
+        """Drops duplicates in the result file."""
+        # No need to sdfs get, since local version should be fresh.
+        fname = self.__job_to_sdfs_fname(job)
+        query_ids = set()
+        output_file = open(job.output_file, "ab")
+        drop_cnt = 0  # number of duplicates
+        with open(fname, "rb") as f:
+            for _l in f:
+                line = _l.decode('utf-8')
+                if line is not None and len(line) > 0:
+                    query_id = line.split(")")[0]
+                    if query_id in query_ids:  # duplicate
+                        drop_cnt += 1
+                        continue  # ignore
+
+                    query_ids.add(query_id)
+                    output_file.write((line + '\n').encode('utf-8'))
+        output_file.close()
+        print(f"... Job {job.name} dropped {drop_cnt} duplicates")
+        return True
+
+    def __notify_queries_completed(self, queries: List[Query]) -> bool:
+        """Notify standby coordinator that some ``queries`` has completed."""
+        if len(queries) == 0:
+            return False
+        standby_addr = self.__get_standby_coordinator_addr()
+        message = self.__generate_message("QUERIES UPDATE", content={"queries": queries})
+        confirm = self.write_to(message, standby_addr[0], standby_addr[1])
+        return bool(confirm)
+
+    def __notify_new_job(self, job: Job) -> bool:
+        """Notify standby coordinator that a new ``job`` has been submitted."""
+        standby_addr = self.__get_standby_coordinator_addr()
+        message = self.__generate_message("JOB UPDATE", content={"job": job})
+        confirm = self.write_to(message, standby_addr[0], standby_addr[1])
+        return bool(confirm)
+
+    def __notify_client_job_completed(self, job: Job, client_addr: tuple) -> bool:
+        message = self.__generate_message("JOB COMPLETE", content={"job": job})
+        confirm = self.write_to(message, client_addr[0], client_addr[1])
+        return bool(confirm)
+
+    def __get_standby_coordinator_addr(self) -> tuple:
+        """Gets standby coordinator host, port."""
+        # If already has standby coordinator addr, just return
+        if self.standby_addr is not None:
+            return self.standby_addr
+        # otherwise, ask dns for this
+        else:
+            pass
+        return ("", 0)  # host, port      
+
     ### Utility functions
     @staticmethod
     def __local_file_ready(fname: str) -> bool:
@@ -123,3 +260,7 @@ class IdunnoCoordinator(SDFS):
     @staticmethod
     def __query_to_output_key(query: Query) -> str:
         return query.input_file
+
+    @staticmethod
+    def __job_to_sdfs_fname(job: Job) -> str:
+        return job.output_file + ".tmp"
