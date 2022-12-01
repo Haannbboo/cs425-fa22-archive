@@ -24,9 +24,11 @@ class IdunnoNode():
         self.coordinator_port = ""
     
     def pretrain(self, model_name):
+        print("... pretrianing ", model_name)
         extractor = AutoFeatureExtractor.from_pretrained("microsoft/" + model_name)
         model = AutoModelForImageClassification.from_pretrained("microsoft/" + model_name)
         self.model_map[model_name] = (extractor, model)
+        print("finish one pretrain")
     
     #only receive START message to turn IDLE to RUNNING
     def turnON(self):
@@ -61,9 +63,9 @@ class IdunnoNode():
                         model_name = message.content["model_name"]
                         self.pretrain(model_name)
                         
-                        train_ACK = self.__generate_message("TRAIN ACK")
+                        train_ACK = self.__generate_message("TRAIN CONFIRM")
                         
-                        s.sendall(pickle.dump(train_ACK)) 
+                        conn.sendall(pickle.dumps(train_ACK)) 
                     
     
     def inference_result(self, query: Query):

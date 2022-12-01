@@ -246,7 +246,7 @@ class SDFS:
     def ask_dns(self, message: Message) -> Message:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             # Send udp ``message`` to dns server
-            s.sendto(message, (DNS_SERVER_HOST, DNS_SERVER_PORT))
+            s.sendto(pickle.dumps(message), (DNS_SERVER_HOST, DNS_SERVER_PORT))
             data = self.recv_message_udp(s)
             resp: Message = pickle.loads(data)
             return resp
