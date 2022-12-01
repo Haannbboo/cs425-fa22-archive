@@ -64,6 +64,25 @@ class IdunnoNode(SDFS):
                         
                         
     
+    #only receive train request
+    def receive_train_request(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("", PRE_TRAIN_PORT))
+            s.listen()
+            
+            while True:
+                conn, _ = s.accept
+                with conn:
+                    data = conn.recv(4096)
+                    message: Message = pickle.loads(data)
+                    
+                    if message.message_type == "REQ TRAIN":
+                        model_name = message.content["model_name"]
+                        print("pre training ...")
+                        self.pretrain(model_name)    
+                    
+    
     def inference_result(self, query: Query):
         model_name = query.model
         extractor, model = self.model_map[model_name]

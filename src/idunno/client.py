@@ -16,7 +16,6 @@ class IdunnoClient(SDFS):
     
     def __init__(self) -> None:
         super().__init__() # init sdfs
-
     def run(self):
         threads = super().run()  # run sdfs
         threads.append(threading.Thread(target=self.commander))

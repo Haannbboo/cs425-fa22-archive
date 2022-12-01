@@ -32,6 +32,12 @@ class IdunnoCoordinator(SDFS):
 
         # Use sdfs commander
         threads.append(Thread(target=self.commander))
+        
+        for t in threads:
+            t.start()
+        
+        for t in threads:
+            t.join()
 
     def submit_job(self, job: Job) -> bool:
         if not self.__admission_control(job):
