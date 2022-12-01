@@ -1,19 +1,30 @@
 import socket
-from src.sdfs import SDFS, Message
 import time
-from typing import Any, Union, List
-from src.config import * 
+from typing import Any, Union, List 
 import pickle
 import threading
 import os
 import numpy as np
 from tqdm import tqdm
 
+from src.sdfs import SDFS, Message
+from src.config import *
+from .utils import Job
+
+
 class IdunnoClient(SDFS):
     
     def __init__(self) -> None:
         super().__init__() # init sdfs
-    
+
+    def run(self):
+        threads = super().run()  # run sdfs
+        threads.append(threading.Thread(target=self.commander))
+        threads.append(threading.Thread(target=self.recv_completion))
+
+        for thread in threads:
+            thread.start()
+
     def pretrain_request(self, model_name):
         train_message = self.__generate_message("REQ TRAIN", content={"model_name": model_name})
         targets = [i.host for i in self.all_processes]
@@ -27,21 +38,20 @@ class IdunnoClient(SDFS):
         print("Train Complete")
         return 1
     
-    # def write_to(self, message, host, port, response: bool = True) -> Union[Message, int]:
-    #     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:  # tcp
-    #         # print(f"... ... Write {message.message_type} to {remote_host}")
-    #         try:
-    #             s.connect((host, port))
-    #             s.sendall(pickle.dumps(message))
-    #             s.shutdown(socket.SHUT_WR)
-    #         except socket.error:
-    #             return 0
-    #         if response:
-    #             # wait for confirm
-    #             data = s.recv(1024)
-    #             resp: Message = pickle.loads(data)
-    #             return resp
-    #         return 1
+    def write_with_resp(self, message, host, port, response: bool = True) -> Union[Message, int]:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:  # tcp
+            try:
+                s.connect((host, port))
+                s.sendall(pickle.dumps(message))
+                s.shutdown(socket.SHUT_WR)
+            except socket.error:
+                return 0
+            if response:
+                # wait for confirm
+                data = s.recv(1024)
+                resp: Message = pickle.loads(data)
+                return resp
+            return 1
 
     def send_inference(self, model_name: str, data_dir: str, batch_size: int):
         # Read local dataset and upload to sdfs
@@ -72,9 +82,30 @@ class IdunnoClient(SDFS):
 
     def recv_completion(self):
         """Receives job completion from coordinator."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("", PORT_IDUNNO_CLIENT))
+            s.listen()
+
+            while True:
+                time.sleep(1)
+                conn, addr = s.accept()
+                with conn:
+                    data = self.__recv_message(conn)
+                    message: Message = pickle.loads(data)
+
+                    if message.message_type == "JOB COMPLETE":
+                        # Coordinator tells client that a job has completed
+                        job: Job = message.content["job"]
+                        if self.__confirm_job_completion(job):
+                            confirmation = self.__generate_message("JOB COMPLETE CONFIRM")
+                            conn.sendall(confirmation)
+                        if self.get(job.output_file, job.output_file):
+                            print(f"\nJob {job.name} completed! Results written to {job.output_file}")
+                        else:
+                            print(f"\nJob {job.name} completed, but failed to retreive to local file.")
             
-            
-    def run(self):
+    def commander(self):
         """
         Commands:
         =========
@@ -85,8 +116,6 @@ class IdunnoClient(SDFS):
         """
         print()
         print("IDunno version 0.0.1")
-        
-        super().run()
 
         while True:
             command = input(">>> ")
@@ -116,7 +145,6 @@ class IdunnoClient(SDFS):
 
                 self.send_inference(model_name, data_dir, batch_size)
                     
-
             elif argv[0] == "state" and len(argv) > 1:
                 #show the job's state (demo C1)
                 continue
@@ -127,13 +155,13 @@ class IdunnoClient(SDFS):
                 #show the current set of VMs assigned to each job (demo C5)
                 message = self.__generate_message("C5")
                 to_host, to_port = self.__get_coordinator_addr()
-                resp: Message = self.write_to(message, to_host, to_port)  # resp from coordinator
+                resp: Message = self.write_with_resp(message, to_host, to_port)  # resp from coordinator
                 print(resp.content["resp"])
             elif argv[0] == "report" or argv[0] == "C2" and len(argv) >= 2:
                 # get current processing time
                 message = self.__generate_message("C2", content={"job_name": argv[1]})
                 to_host, to_port = self.__get_coordinator_addr()
-                resp: Message = self.write_to(message, to_host, to_port)
+                resp: Message = self.write_with_resp(message, to_host, to_port)
                 ptime: List[float] = resp.content["resp"]  # list of processing time
                 # Calculate average, percentiles, std
                 ptime = np.array(ptime)
@@ -152,4 +180,8 @@ class IdunnoClient(SDFS):
         resp = self.ask_dns(message)
         host, port = resp.content["host"], resp.content["port"]
         return (host, port)
+
+    def __confirm_job_completion(self, job: Job) -> bool:
+        """Checks if a ``job`` is satisfiable, aka ready for return."""
+        return True
     

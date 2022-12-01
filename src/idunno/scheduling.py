@@ -5,7 +5,7 @@ from .utils import JobTable, Job
 
 class FairTimeScheduler:
 
-    def schedule(self, jobs: JobTable, n_queries: int = 1) -> Job:
+    def schedule(self, jobs: JobTable) -> Job:
         """Selects the running job with lowest ``rate`` property."""
         selected_job = None
         min_rate = 100000  # arbitrary large number

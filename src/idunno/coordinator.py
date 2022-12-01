@@ -2,12 +2,13 @@ import os
 import pickle
 import socket
 import time
-from typing import List
+from threading import Thread
+from typing import List, Dict
 
 from src.config import *
 from src.sdfs import SDFS, Message
 from .scheduling import FairTimeScheduler
-from .utils import JobTable, Job, Query
+from .utils import JobTable, Job, Query, QueryTable
 
 
 class IdunnoCoordinator(SDFS):
@@ -19,9 +20,18 @@ class IdunnoCoordinator(SDFS):
 
         self.available_workers: List[int] = []
 
-        self.coordinator_addr = None
         self.standby_addr = None
-        self.is_standby = standby
+
+    def run(self):
+        threads = super().run()  # run sdfs
+        
+        threads.append(Thread(taret=self.client_server))
+        threads.append(Thread(target=self.standby_recv))
+        threads.append(Thread(target=self.job_dispatch))
+        threads.append(Thread(target=self.job_collection))
+
+        # Use sdfs commander
+        threads.append(Thread(target=self.commander))
 
     def submit_job(self, job: Job) -> bool:
         if not self.__admission_control(job):
@@ -38,17 +48,13 @@ class IdunnoCoordinator(SDFS):
 
         return True
 
-    def standby_recev(self):
+    def standby_recv(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(("", PORT_STANDBY_UPDATE))
             s.listen()
 
-            while True:
-                if not self.is_standby:
-                    time.sleep(1)
-                    continue
-                    
+            while True:           
                 conn, addr = s.accept()
                 with conn:
                     data = self.__recv_message(conn)
@@ -74,7 +80,7 @@ class IdunnoCoordinator(SDFS):
         """Serves client's request."""
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(("", PORT_IDUNNO_CLIENT))
+            s.bind(("", PORT_IDUNNO_COORDINATOR))
             s.listen()
 
             while True:
@@ -82,6 +88,29 @@ class IdunnoCoordinator(SDFS):
                 with conn:
                     data = self.__recv_message(conn)
                     message: Message = pickle.loads(data)
+
+                    if message.message_type == "C2":
+                        job_name = message.content["job_name"]
+                        ptime = self.__get_processing_time(job_name)
+                        resp = self.__generate_message("RESP C2", content={"resp": ptime})
+                        conn.sendall(pickle.dumps(resp))
+                    
+                    elif message.message_type == "C5":
+                        placement = self.__get_job_placement()
+                        resp = self.__generate_message("RESP C5", content={"resp": placement})
+                        conn.sendall(pickle.dumps(resp))
+
+                    elif message.message_type == "NEW JOB":
+                        # New inference job requested
+                        # TODO: might need to resp first then processing request
+
+                        # Generate new job
+                        job = self.__welcome_client(message)
+
+                        self.submit_job(job)
+                        
+                        confirmation = self.__generate_message("NEW JOB CONFIRM")
+                        conn.sendall(pickle.dumps(confirmation))
 
 
     def job_dispatch(self):
@@ -97,13 +126,15 @@ class IdunnoCoordinator(SDFS):
                     message: Message = pickle.loads(data)
 
                     if message.message_type == "REQ QUERIES":
-                        n_queries = message.content["n_queries"]
-                        job = self.scheduler.schedule(self.jobs, n_queries)
+                        job = self.scheduler.schedule(self.jobs)
+                        if job.start_time == -1:  # init start_time upon first schedule
+                            job.start_time = time.time()
+
                         if job is None:  # no active job
                             self.send_stop(conn)  # tell worker to rest
                             self.available_workers.append(message.id)
                         else:
-                            queries = job.queries.get_idle_queries(n_queries)
+                            queries = job.queries.get_idle_queries(job.batch_size)
                             ack = self.send_queries(queries, conn)
                             if ack:  # if worker has received works to do
                                 job.queries.mark_as_scheduled(queries)
@@ -166,14 +197,12 @@ class IdunnoCoordinator(SDFS):
 
         return True
 
-    def run(self):
-        pass
-
     def __admission_control(self, new_job: Job) -> bool:
         """Decides if ``new_job`` could be admitted."""
         return True
 
     def __write_queries_result(self, queries: List[Query], job: Job) -> bool:
+        """Writes result of ``queries`` to output file on sdfs."""
         fname = self.__job_to_sdfs_fname(job)
         success = self.get(fname, fname)
         if not success or not self.__local_file_ready(fname):
@@ -198,6 +227,8 @@ class IdunnoCoordinator(SDFS):
     def __handle_job_complete(self, job: Job):
         """Defines what to do when a job is completed and confirmed by the client."""
         job.completed = True
+        # Remove tmp output file from sdfs
+        self.delete(self.__job_to_sdfs_fname(job))
 
     def __drop_result_duplicates(self, job: Job) -> bool:
         """Drops duplicates in the result file."""
@@ -218,28 +249,30 @@ class IdunnoCoordinator(SDFS):
                     query_ids.add(query_id)
                     output_file.write((line + '\n').encode('utf-8'))
         output_file.close()
+        self.put(job.output_file, job.output_file)  # upload result file
         print(f"... Job {job.name} dropped {drop_cnt} duplicates")
         return True
 
     def __notify_queries_completed(self, queries: List[Query]) -> bool:
-        """Notify standby coordinator that some ``queries`` has completed."""
+        """Notify standby coordinator that some ``queries`` has completed. Confirmation needed."""
         if len(queries) == 0:
             return False
         standby_addr = self.__get_standby_coordinator_addr()
         message = self.__generate_message("QUERIES UPDATE", content={"queries": queries})
         confirm = self.write_to(message, standby_addr[0], standby_addr[1])
-        return bool(confirm)
+        return True
 
     def __notify_new_job(self, job: Job) -> bool:
-        """Notify standby coordinator that a new ``job`` has been submitted."""
+        """Notify standby coordinator that a new ``job`` has been submitted. Confirmation needed."""
         standby_addr = self.__get_standby_coordinator_addr()
         message = self.__generate_message("JOB UPDATE", content={"job": job})
         confirm = self.write_to(message, standby_addr[0], standby_addr[1])
-        return bool(confirm)
+        return True
 
-    def __notify_client_job_completed(self, job: Job, client_addr: tuple) -> bool:
+    def __notify_client_job_completed(self, job: Job) -> bool:
+        """Notify client that a ``job`` has completed. Needs client's confirmation."""
         message = self.__generate_message("JOB COMPLETE", content={"job": job})
-        confirm = self.write_to(message, client_addr[0], client_addr[1])
+        confirm = self.write_to(message, job.client[0], job.client[1])
         return bool(confirm)
 
     def __get_standby_coordinator_addr(self) -> tuple:
@@ -249,8 +282,40 @@ class IdunnoCoordinator(SDFS):
             return self.standby_addr
         # otherwise, ask dns for this
         else:
-            pass
-        return ("", 0)  # host, port      
+            message = self.__generate_message("standby")
+            resp = self.ask_dns(message)
+            host, port = resp.content["host"], resp.content["port"]
+            return host, port
+
+    ### Client side commands
+    def __get_processing_time(self, job_name: int) -> List[float]:  # command C2
+        job: Job = self.jobs.get_job_by_name(job_name)
+        completed_queries = job.queries.completed_queries[:]
+        processing_time = [query.processing_time for query in completed_queries]
+        return processing_time
+
+    def __get_job_placement(self) -> Dict[int, str]:  # command C5
+        # Output: vm -> job name
+        placement = {k: v[0].job_name for k, v in self.jobs.placement.items() if len(v) > 0}
+        return placement
+
+    def __welcome_client(self, message: Message) -> Job:
+        """Parses client's new job request message. Returns a formatted ``Job``."""
+        model_name = message.content["model_name"]
+        batch_size = message.content["batch_size"]
+        sdfs_fname: List[str] = message.content["dataset"]
+        job = self.jobs.generate_new_job()
+        job.client = message.host, PORT_IDUNNO_CLIENT
+        job.batch_size = batch_size
+        job.model = model_name
+        job.name = model_name  # for now job name is model_name
+        job.output_file = model_name  # for now
+        
+        queries = QueryTable()
+        for fname in sdfs_fname:
+            queries.add_query(job.id, job.name, job.model, fname)
+        job.queries = queries
+        return job
 
     ### Utility functions
     @staticmethod

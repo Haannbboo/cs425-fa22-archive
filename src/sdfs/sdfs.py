@@ -5,7 +5,6 @@ import socket
 import threading
 import time
 from typing import Any, List, Set, Dict, Tuple, TYPE_CHECKING
-from tqdm import tqdm
 import random
 
 from ..config import *
@@ -204,7 +203,7 @@ class SDFS:
     def master_id(self) -> int:
         return self.all_processes[0].id
 
-    def run(self):
+    def run(self) -> List[threading.Thread]:
         threads = []
         # run FD
         threads.extend(self.fd.run())
@@ -218,14 +217,7 @@ class SDFS:
         threads.append(threading.Thread(target=self.tcp_receiver_from_client))
         threads.append(threading.Thread(target=self.failure_received))
 
-        # run failure checker
-        # threads.append(threading.Thread(target=self.check_delete_pool))
-
-        for t in threads:
-            t.start()
-
-        # for t in threads:
-        #     t.join()
+        return threads
 
     # can DNS assign id instead of introducer
     def introducer(self, s=...):
@@ -251,9 +243,13 @@ class SDFS:
                     s.sendto(pickle.dumps(new_msg), addr)  # TODO: this ``addr`` might be wrong
         s.close()
 
-    def udp_receiver(self):
-        """Sends and receives files to other nodes."""
-        pass
+    def ask_dns(self, message: Message) -> Message:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            # Send udp ``message`` to dns server
+            s.sendto(message, (DNS_SERVER_HOST, DNS_SERVER_PORT))
+            data = self.__recv_message_udp(s)
+            resp: Message = pickle.loads(data)
+            return resp
 
     def failure_received(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -620,23 +616,21 @@ class SDFS:
         offset, chunk = 0, 1
         total_chunks = fsize // FILE_CHUNK_SIZE + int((fsize % FILE_CHUNK_SIZE) > 0)
 
-        with tqdm(total=total_chunks) as pbar:
-            while offset < fsize:
-                payload = self.__read_from_local(localfilename, offset)
+        while offset < fsize:
+            payload = self.__read_from_local(localfilename, offset)
 
-                # Transfer file to master via TCP
-                content = {"remote": sdfsfilename, "payload": payload, "chunk": chunk, "total_chunks": total_chunks}
-                message = self.__generate_message("CLIENT WRITE", content=content)
+            # Transfer file to master via TCP
+            content = {"remote": sdfsfilename, "payload": payload, "chunk": chunk, "total_chunks": total_chunks}
+            message = self.__generate_message("CLIENT WRITE", content=content)
 
-                # send to master
-                # master will arrange writes, update replicas, collect confirm, and multicast
-                # print("... Sent CLIENT WRITE to server")
-                confirmed = self.multicast(message, set([self.master_id]), PORT_TCP_CLIENTMASTER, confirm=1)
-                
-                if confirmed:
-                    offset += FILE_CHUNK_SIZE
-                    chunk += 1
-                    pbar.update(1)
+            # send to master
+            # master will arrange writes, update replicas, collect confirm, and multicast
+            # print("... Sent CLIENT WRITE to server")
+            confirmed = self.multicast(message, set([self.master_id]), PORT_TCP_CLIENTMASTER, confirm=1)
+            
+            if confirmed:
+                offset += FILE_CHUNK_SIZE
+                chunk += 1
 
         return confirmed
 
@@ -676,19 +670,17 @@ class SDFS:
             new_max_offset = offset + max_version_fsize
 
             retry = 0
-            with tqdm(total=total_chunks) as pbar:
-                while offset < new_max_offset:
-                    payload = self.recv_chunk(sdfsfilename, chunk, self.__id_to_host(read_target), version)
-                    retry += 1
-                    if len(payload) > 0:
-                        offset += FILE_CHUNK_SIZE
-                        chunk += 1
-                        retry = 0
-                        pbar.update(1)
-                        self.__write_to_local(temp_localfilename, payload, offset, "ab")
-                    if retry == GET_RETRY:
-                        # Has already tried several times
-                        break
+            while offset < new_max_offset:
+                payload = self.recv_chunk(sdfsfilename, chunk, self.__id_to_host(read_target), version)
+                retry += 1
+                if len(payload) > 0:
+                    offset += FILE_CHUNK_SIZE
+                    chunk += 1
+                    retry = 0
+                    self.__write_to_local(temp_localfilename, payload, offset, "ab")
+                if retry == GET_RETRY:
+                    # Has already tried several times
+                    break
 
         # Check temp_localfilename, 
         # if valid, remove localfilename if exists, rename temp_localfilename to localfilename
@@ -827,9 +819,21 @@ class SDFS:
 
     @staticmethod
     def __recv_message(conn: socket.socket) -> bytes:
+        """Receives data with tcp."""
         data = bytearray()
         while True:
             packet = conn.recv(32 * 1024)
+            if not packet:
+                break
+            data.extend(packet)
+        return data
+
+    @staticmethod
+    def __recv_message_udp(s: socket.socket) -> bytes:
+        data = bytearray()
+        while True:
+            s.settimeout(2)
+            packet = s.recvfrom(4 * 1024)
             if not packet:
                 break
             data.extend(packet)

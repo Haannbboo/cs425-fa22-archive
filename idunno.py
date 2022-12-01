@@ -19,6 +19,5 @@ elif argv[1] == "worker":
     node = IdunnoNode()
     node.run()
 elif argv[1] == "coordinator":
-    standby = argv[2] == "standby"
-    coordinator = IdunnoCoordinator(standby)
+    coordinator = IdunnoCoordinator()
     coordinator.run()
