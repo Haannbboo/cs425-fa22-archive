@@ -4,17 +4,20 @@ import socket
 from transformers import AutoFeatureExtractor, AutoModelForImageClassification
 import pickle
 from PIL import Image
+from typing import Any
+import time
 
 from src.config import *
 from src.sdfs import SDFS, Message
 from .utils import JobTable, Job, Query
 
+
 RUNNING = 1
 IDLE = 0
 
-class IdunnoNode(SDFS):
-    def __init__(self) -> None:
-        super().__init__()  # init sdfs
+class IdunnoNode():
+    def __init__(self, sdfs) -> None:
+        self.sdfs = sdfs
         self.model_map = {}
         self.worker_state = IDLE
         self.coordinator_host = ""
@@ -60,27 +63,7 @@ class IdunnoNode(SDFS):
                         
                         train_ACK = self.__generate_message("TRAIN ACK")
                         
-                        s.sendall(pickle.dump(train_ACK))
-                        
-                        
-    
-    #only receive train request
-    def receive_train_request(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(("", PRE_TRAIN_PORT))
-            s.listen()
-            
-            while True:
-                conn, _ = s.accept
-                with conn:
-                    data = conn.recv(4096)
-                    message: Message = pickle.loads(data)
-                    
-                    if message.message_type == "REQ TRAIN":
-                        model_name = message.content["model_name"]
-                        print("pre training ...")
-                        self.pretrain(model_name)    
+                        s.sendall(pickle.dump(train_ACK)) 
                     
     
     def inference_result(self, query: Query):
@@ -146,11 +129,11 @@ class IdunnoNode(SDFS):
                 #send message to DNS to get new coordinator host id?
                 return False
         return True
+    
+    def __generate_message(self, m_type: str, content: Any = None) -> Message:
+        """Generates message for all communications."""
+        return Message(self.sdfs.id, self.sdfs.host, self.sdfs.port, time.time(), m_type, content)
                 
-                
-
-    def commander(self):
-        pass
 
     def run(self):
         threads: List[threading.Thread] = []
@@ -159,7 +142,5 @@ class IdunnoNode(SDFS):
         threads.append(threading.Thread(target=self.receive_train_request))
         threads.append(threading.Thread(target=self.turnON))
         threads.append(threading.Thread(target=self.request_job))
-
-
-        for thread in threads:
-            thread.start()
+        
+        return threads
