@@ -132,6 +132,21 @@ class DNSserver:
                         if crushed == self.coordinator_host:
                             self.coordinator_host = self.standby_host
                             self.standby_host = msg.host
+
+                    elif msg.message_type == "coordinator":
+                        content = {
+                            "host": self.coordinator_host,
+                        }
+                        coordinator_info = self.__generate_message("RESP_COORDINATOR", content)
+                        s.sendto(pickle.dumps(coordinator_info), addr)
+                    
+                    elif msg.message_type == "standby":
+                        content = {
+                            "host": self.standby_host,
+                        }
+                        standby_info = self.__generate_message("RESP_STANDBY", content)
+                        s.sendto(pickle.dumps(standby_info), addr)
+                        
             except Exception as e:
                 s.close()
                 raise e from None
