@@ -10,14 +10,24 @@ from tqdm import tqdm
 from src.sdfs import SDFS, Message
 from src.config import *
 from .utils import Job
+from .coordinator import IdunnoCoordinator
+from .node import IdunnoNode
 
 
-class IdunnoClient(SDFS):
+class IdunnoClient:
     
-    def __init__(self) -> None:
-        super().__init__() # init sdfs
+    def __init__(self, coordinator_on: bool = True) -> None:
+        self.sdfs = SDFS()
+        self.worker = IdunnoNode(self.sdfs)
+        self.coordinator = IdunnoCoordinator(self.sdfs)
+
+        self.coordinator_on = coordinator_on
+        
     def run(self):
-        threads = super().run()  # run sdfs
+        threads = self.sdfs.run()  # run sdfs
+        if self.coordinator_on:
+            threads.extend(self.coordinator.run())
+        threads.extend(self.worker.run())
         threads.append(threading.Thread(target=self.commander))
         threads.append(threading.Thread(target=self.recv_completion))
 
@@ -26,11 +36,11 @@ class IdunnoClient(SDFS):
 
     def pretrain_request(self, model_name):
         train_message = self.__generate_message("REQ TRAIN", content={"model_name": model_name})
-        targets = [i.host for i in self.all_processes]
+        targets = [i.host for i in self.sdfs.all_processes]
         
         for target in targets:
             # threading.Thread(target=self.write_to, args=(train_message, target, PRE_TRAIN_PORT, True)).run()
-            res = self.write_to(train_message, target, PRE_TRAIN_PORT)
+            res = self.sdfs.write_to(train_message, target, PRE_TRAIN_PORT)
             if res == 0:
                 print("pre train ERROR occur")
                 return 0
@@ -60,7 +70,7 @@ class IdunnoClient(SDFS):
         # Send to coordinator
         to_host, to_port = self.__get_coordinator_addr()
         message = self.__generate_message("NEW JOB", content={"model_name": model_name, "batch_size": batch_size, "dataset": sdfs_fname})
-        confirmed: Message = self.write_to(message, to_host, to_port)
+        confirmed: Message = self.sdfs.write_to(message, to_host, to_port)
         if confirmed:  # Message does not implement __bool__
             return True
         else:
@@ -74,7 +84,7 @@ class IdunnoClient(SDFS):
         print("... Putting inference dataset to sdfs")
         with tqdm(total=len(data_files)) as pbar:
             while i < len(data_files):
-                confirmed = self.put(data_fpath[i], sdfs_fname[i])
+                confirmed = self.sdfs.put(data_fpath[i], sdfs_fname[i])
                 if confirmed:
                     i += 1
                     pbar.update(1)
@@ -90,7 +100,7 @@ class IdunnoClient(SDFS):
                 time.sleep(1)
                 conn, addr = s.accept()
                 with conn:
-                    data = self.__recv_message(conn)
+                    data = self.sdfs.recv_message(conn)
                     message: Message = pickle.loads(data)
 
                     if message.message_type == "JOB COMPLETE":
@@ -99,7 +109,7 @@ class IdunnoClient(SDFS):
                         if self.__confirm_job_completion(job):
                             confirmation = self.__generate_message("JOB COMPLETE CONFIRM")
                             conn.sendall(confirmation)
-                        if self.get(job.output_file, job.output_file):
+                        if self.sdfs.get(job.output_file, job.output_file):
                             print(f"\nJob {job.name} completed! Results written to {job.output_file}")
                         else:
                             print(f"\nJob {job.name} completed, but failed to retreive to local file.")
@@ -170,17 +180,21 @@ class IdunnoClient(SDFS):
                 print(f"Completed: {n_completed}")
                 print(f"\tProcessing time: average {average}\tstd {std}\tmedian {median}\t90% {percentiles[0]}\t95% {percentiles[1]}\t99% {percentiles[2]}")
             elif argv[0] == "join":
-                self.join()
+                self.sdfs.join()
             else:
                 print(f"[ERROR] Invalid command: {command}")
 
     def __get_coordinator_addr(self):
         message = self.__generate_message("coordinator")
-        resp = self.ask_dns(message)
+        resp = self.sdfs.ask_dns(message)
         host = resp.content["host"]
         return (host, PORT_IDUNNO_COORDINATOR)
 
     def __confirm_job_completion(self, job: Job) -> bool:
         """Checks if a ``job`` is satisfiable, aka ready for return."""
         return True
+
+    def __generate_message(self, m_type: str, content: Any = None) -> Message:
+        """Generates message for all communications."""
+        return Message(self.sdfs.id, self.sdfs.host, self.sdfs.port, time.time(), m_type, content)
     

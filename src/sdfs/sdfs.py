@@ -247,7 +247,7 @@ class SDFS:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             # Send udp ``message`` to dns server
             s.sendto(message, (DNS_SERVER_HOST, DNS_SERVER_PORT))
-            data = self.__recv_message_udp(s)
+            data = self.recv_message_udp(s)
             resp: Message = pickle.loads(data)
             return resp
 
@@ -333,7 +333,7 @@ class SDFS:
             while True:
                 conn, addr = s.accept()
                 with conn:
-                    data = self.__recv_message(conn)
+                    data = self.recv_message(conn)
 
                     message: Message = pickle.loads(data)
                     if message.message_type == "REQ WRITE":
@@ -438,7 +438,7 @@ class SDFS:
             while True:
                 conn, addr = s.accept()
                 with conn:
-                    data = self.__recv_message(conn)
+                    data = self.recv_message(conn)
 
                     message: Message = pickle.loads(data)
                     if message.message_type == "CLIENT WRITE":
@@ -818,7 +818,7 @@ class SDFS:
             return os.path.join(self.dir, self.ft._remote_to_sdfsfname(remote, version))
 
     @staticmethod
-    def __recv_message(conn: socket.socket) -> bytes:
+    def recv_message(conn: socket.socket) -> bytes:
         """Receives data with tcp."""
         data = bytearray()
         while True:
@@ -829,7 +829,7 @@ class SDFS:
         return data
 
     @staticmethod
-    def __recv_message_udp(s: socket.socket) -> bytes:
+    def recv_message_udp(s: socket.socket) -> bytes:
         data = bytearray()
         while True:
             s.settimeout(2)

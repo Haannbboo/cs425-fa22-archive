@@ -1,7 +1,7 @@
 import sys
 
 from src.sdfs import SDFS, DNSserver
-from src.idunno import IdunnoClient, IdunnoNode, IdunnoCoordinator
+from src.idunno import IdunnoClient
 
 argc = len(sys.argv)
 argv = sys.argv
@@ -13,11 +13,8 @@ elif argv[1] == "dns":
     d = DNSserver()
     d.run()
 elif argv[1] == "client":
-    client = IdunnoClient()
+    client = IdunnoClient(coordinator_on=False)
     client.run()
-elif argv[1] == "worker":
-    node = IdunnoNode()
-    node.run()
 elif argv[1] == "coordinator":
-    coordinator = IdunnoCoordinator()
+    coordinator = IdunnoClient(coordinator_on=True)
     coordinator.run()
