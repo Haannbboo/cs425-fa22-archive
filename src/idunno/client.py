@@ -18,8 +18,9 @@ class IdunnoClient:
     
     def __init__(self, coordinator_on: bool = True) -> None:
         self.sdfs = SDFS()
-        self.worker = IdunnoNode(self.sdfs)
         self.coordinator = IdunnoCoordinator(self.sdfs)
+        self.worker = IdunnoNode(self.sdfs)
+        
 
         self.coordinator_on = coordinator_on
         

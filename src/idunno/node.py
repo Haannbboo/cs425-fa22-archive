@@ -11,7 +11,7 @@ from src.config import *
 from src.sdfs import SDFS, Message
 from .utils import JobTable, Job, Query
 
-
+UNKNOWN = -1
 RUNNING = 1
 IDLE = 0
 
@@ -19,9 +19,22 @@ class IdunnoNode():
     def __init__(self, sdfs) -> None:
         self.sdfs = sdfs
         self.model_map = {}
-        self.worker_state = IDLE
+        self.worker_state = UNKNOWN
         self.coordinator_host = ""
-        self.coordinator_port = ""
+    
+    def ask_dns_host(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            while True:
+                coordinator_req: Message = self.__generate_message("coordinator")
+                if self.coordinator_host == "":
+                    s.sendto(pickle.dumps(coordinator_req), (DNS_SERVER_HOST, DNS_SERVER_PORT))
+                    packet, _ = s.recvfrom(4 * 1024)
+                    resp: Message = pickle.loads(packet)
+                    if resp.content["host"] != "":
+                        self.coordinator_host = resp.content["host"]
+                else:
+                    break
+                time.sleep(0.5)
     
     def pretrain(self, model_name):
         print("... pretrianing ", model_name)
@@ -45,6 +58,7 @@ class IdunnoNode():
                     if message.message_type == "START":
                         self.coordinator_host = message.host
                         self.worker_state = RUNNING
+                        print("I am running -----")
     
     #only receive train request
     def receive_train_request(self):
@@ -65,8 +79,7 @@ class IdunnoNode():
                         
                         train_ACK = self.__generate_message("TRAIN CONFIRM")
                         
-                        conn.sendall(pickle.dumps(train_ACK)) 
-                    
+                        conn.sendall(pickle.dumps(train_ACK))              
     
     def inference_result(self, query: Query):
         model_name = query.model
@@ -78,24 +91,23 @@ class IdunnoNode():
         predicted_class_idx = logits.argmax(-1).item()
         res = model.config.id2label[predicted_class_idx]
         query.result = res
-        
     
     def request_job(self):
         queries = []
-        req_job_message = self.__generate_message("REQ QUERIES")
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             #if coordinator fail, what to do
             while True:
-                if self.worker_state != RUNNING:
+                if self.worker_state == IDLE or self.coordinator_host == "":
                     continue
                 try: 
+                    req_job_message = self.__generate_message("REQ QUERIES")
                     addr = (self.coordinator_host, PORT_REQUEST_JOB)
                     s.connect(addr)
                     s.sendall(pickle.dumps(req_job_message))
                     s.shutdown(socket.SHUT_WR)
                 except socket.error:
                     #send message to DNS to get new coordinator host id?
-                    return False
+                    continue
                 
                 try:
                     s.settimeout(1)
@@ -112,10 +124,8 @@ class IdunnoNode():
                         self.worker_state == IDLE
                     s.shutdown(socket.SHUT_WR)
                 except socket.error:
-                    return False
-                self.job_complete(queries)
-                        
-                        
+                    continue
+                self.job_complete(queries)      
                 
     def job_complete(self, queries):
         if self.worker_state != RUNNING:
@@ -140,7 +150,7 @@ class IdunnoNode():
     def run(self):
         threads: List[threading.Thread] = []
 
-        # threads.append(threading.Thread(target=self.commander))
+        threads.append(threading.Thread(target=self.ask_dns_host))
         threads.append(threading.Thread(target=self.receive_train_request))
         threads.append(threading.Thread(target=self.turnON))
         threads.append(threading.Thread(target=self.request_job))

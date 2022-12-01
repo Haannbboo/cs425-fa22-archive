@@ -23,7 +23,9 @@ class IdunnoCoordinator():
         self.standby_addr = None
 
     def run(self) -> List[Thread]:
-        threads = self.sdfs.run()  # run sdfs
+        # threads = self.sdfs.run()  # run sdfs
+        
+        threads = []
         
         threads.append(Thread(target=self.client_server))
         threads.append(Thread(target=self.standby_recv))
@@ -117,13 +119,13 @@ class IdunnoCoordinator():
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(("", PORT_REQUEST_JOB))
             s.listen()
-
             while True:
                 conn, addr = s.accept()
                 with conn:
                     data = self.sdfs.recv_message(conn)
                     message: Message = pickle.loads(data)
-
+                    print(f"I have recieved the message {message.message_type}")
+                    
                     if message.message_type == "REQ QUERIES":
                         job = self.scheduler.schedule(self.jobs)
                         if job.start_time == -1:  # init start_time upon first schedule

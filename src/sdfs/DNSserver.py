@@ -137,6 +137,7 @@ class DNSserver:
                         content = {
                             "host": self.coordinator_host,
                         }
+                        print(f"Receive message to give coordinator host: {self.coordinator_host} from {msg.host}")
                         coordinator_info = self.__generate_message("RESP_COORDINATOR", content)
                         s.sendto(pickle.dumps(coordinator_info), addr)
                     

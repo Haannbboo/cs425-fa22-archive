@@ -247,8 +247,8 @@ class SDFS:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             # Send udp ``message`` to dns server
             s.sendto(pickle.dumps(message), (DNS_SERVER_HOST, DNS_SERVER_PORT))
-            data = self.recv_message_udp(s)
-            resp: Message = pickle.loads(data)
+            packet, _ = s.recvfrom(4 * 1024)
+            resp: Message = pickle.loads(packet)
             return resp
 
     def failure_received(self):
@@ -478,8 +478,8 @@ class SDFS:
                         # Mulicast to other processes
                         if chunk == total_chunks and write_success:  # last chunk confirmed
                             ids = set(self.all_processes_ids) - targets
-                            print(ids)
-                            print(targets)
+                            # print(ids)
+                            # print(targets)
                             multicast_message = self.__generate_message("FT UPDATE", write_message.content)
                             self.multicast(multicast_message, ids, PORT_TCP_MASTERSERVER)
 
@@ -806,7 +806,6 @@ class SDFS:
                 idx = (hash(filename) + i) % l
                 neighbors.append(self.fd.ml.content[idx])
         self.fd.ml_lock.release()
-        print(f"default replica: {neighbors}")
         return set([neighbor.id for neighbor in neighbors])
 
     def __id_to_host(self, id: int) -> str:
@@ -835,8 +834,7 @@ class SDFS:
     def recv_message_udp(s: socket.socket) -> bytes:
         data = bytearray()
         while True:
-            s.settimeout(2)
-            packet = s.recvfrom(4 * 1024)
+            packet, _ = s.recvfrom(4 * 1024)
             if not packet:
                 break
             data.extend(packet)
