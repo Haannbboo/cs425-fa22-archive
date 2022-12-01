@@ -65,12 +65,17 @@ Message: Turn on Introducer?
 
 class DNSserver:
     def __init__(self) -> None:
+        
         self.introducer_host = ""
         self.introducer_port = -1
         self.introducer_id = -1
+        
         self.id = -1
         self.host = DNS_SERVER_HOST
         self.port = DNS_SERVER_PORT
+        
+        self.coordinator_host = ""
+        self.standby_host = ""
 
         self.global_unique_id = 0
 
@@ -97,6 +102,7 @@ class DNSserver:
                             self.introducer_host = msg.host
                             self.introducer_port = PORT_FDINTRODUCER
                             self.introducer_id = msg.id
+                            
 
                         content = {
                             "introducer_host": self.introducer_host,
@@ -104,19 +110,28 @@ class DNSserver:
                             "introducer_id": self.introducer_id,
                             "assigned_id": self.global_unique_id,
                         }
+                        
+                        if self.global_unique_id == 0:
+                            self.coordinator_host = msg.host
+                        if self.global_unique_id == 1:
+                            self.standby_host = msg.host
+                        
                         self.global_unique_id += 1
                         introducer_info = self.__generate_message("RESP_INTRODUCER", content)
                         s.sendto(pickle.dumps(introducer_info), addr)
                         print(f"Respond to {msg.host} w/: {self.introducer_host}:{self.introducer_port}")
 
                     # receive a message that there is a processes is down
-                    else:
+                    elif msg.message_type == "LEAVE":
                         crushed = msg.content["id"]
                         if crushed == self.introducer_id:
                             self.introducer_host = msg.host
                             self.introducer_port = msg.port
                             self.introducer_id = msg.id
                             print(f"Now the introducer is {self.introducer_host}, {self.introducer_id}")
+                        if crushed == self.coordinator_host:
+                            self.coordinator_host = self.standby_host
+                            self.standby_host = msg.host
             except Exception as e:
                 s.close()
                 raise e from None

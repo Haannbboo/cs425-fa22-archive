@@ -213,7 +213,7 @@ class SDFS:
         threads.append(threading.Thread(target=self.introducer))
 
         # run sdfs
-        threads.append(threading.Thread(target=self.commander))
+        # threads.append(threading.Thread(target=self.commander))
         threads.append(threading.Thread(target=self.tcp_receiver_from_master))
         threads.append(threading.Thread(target=self.tcp_receiver_from_client))
         threads.append(threading.Thread(target=self.failure_received))
@@ -224,8 +224,8 @@ class SDFS:
         for t in threads:
             t.start()
 
-        for t in threads:
-            t.join()
+        # for t in threads:
+        #     t.join()
 
     # can DNS assign id instead of introducer
     def introducer(self, s=...):

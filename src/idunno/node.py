@@ -16,7 +16,6 @@ class IdunnoNode(SDFS):
     def __init__(self) -> None:
         super().__init__()  # init sdfs
         self.model_map = {}
-        self.n_queries = 1 #default number
         self.worker_state = IDLE
         self.coordinator_host = ""
         self.coordinator_port = ""
@@ -28,11 +27,19 @@ class IdunnoNode(SDFS):
     
     #only receive START message to turn IDLE to RUNNING
     def turnON(self):
-        pass
-    
-    #only receive STOP message to turn RUNNING to IDLE
-    def turnOff(self):
-        pass
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("", PORT_START_WORKING))
+            s.listen()
+            
+            while True:
+                conn, _ = s.accept()
+                with conn:
+                    data = conn.recv(4096)
+                    message: Message = pickle.loads(data)
+                    if message.message_type == "START":
+                        self.coordinator_host = message.host
+                        self.worker_state = RUNNING
     
     #only receive train request
     def receive_train_request(self):
@@ -42,7 +49,7 @@ class IdunnoNode(SDFS):
             s.listen()
             
             while True:
-                conn, _ = s.accept
+                conn, _ = s.accept()
                 with conn:
                     data = conn.recv(4096)
                     message: Message = pickle.loads(data)
@@ -50,10 +57,12 @@ class IdunnoNode(SDFS):
                     if message.message_type == "REQ TRAIN":
                         model_name = message.content["model_name"]
                         self.pretrain(model_name)
-                    
                         
-                            
-                    
+                        train_ACK = self.__generate_message("TRAIN ACK")
+                        
+                        s.sendall(pickle.dump(train_ACK))
+                        
+                        
     
     def inference_result(self, query: Query):
         model_name = query.model
@@ -67,50 +76,57 @@ class IdunnoNode(SDFS):
         query.result = res
         
     
-    def request_job(self, coordinator_host, coordinator_port):
-        req_job_message = self.__generate_message("REQ QUERIES", content={"n_queries": self.n_queries})
+    def request_job(self):
+        queries = []
+        req_job_message = self.__generate_message("REQ QUERIES")
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            addr = (coordinator_host, coordinator_port)
             #if coordinator fail, what to do
-            try: 
-                s.connect()
-                s.sendall(pickle.dumps(req_job_message))
-                s.shutdown(socket.SHUT_WR)
-            except socket.error:
-                #send message to DNS to get new coordinator host id?
-                return False
-            
-            try:
-                s.settimeout(1)
-                data = s.recv(4096)
-                message: Message = pickle.loads(data)
-                queries = []
-                if message.message_type == "RESP QUERIES":
-                    queries = message.content["queries"]
-                    for query in queries:
-                        fname = query.input_file
-                        self.get(fname, fname)
-                        self.inference_result(query)
-                s.sendall(b'\1') #ack
-                s.shutdown(socket.SHUT_WR)
-                self.job_complete(queries, coordinator_host, coordinator_port)
-            except socket.error:
-                return False
+            while True:
+                if self.worker_state != RUNNING:
+                    continue
+                try: 
+                    addr = (self.coordinator_host, PORT_REQUEST_JOB)
+                    s.connect(addr)
+                    s.sendall(pickle.dumps(req_job_message))
+                    s.shutdown(socket.SHUT_WR)
+                except socket.error:
+                    #send message to DNS to get new coordinator host id?
+                    return False
+                
+                try:
+                    s.settimeout(1)
+                    data = s.recv(4096)
+                    message: Message = pickle.loads(data)
+                    if message.message_type == "RESP QUERIES":
+                        queries = message.content["queries"]
+                        for query in queries:
+                            fname = query.input_file
+                            self.get(fname, fname)
+                            self.inference_result(query)
+                            s.sendall(b'\1') #ack
+                    elif message.message_type == "STOP":
+                        self.worker_state == IDLE
+                    s.shutdown(socket.SHUT_WR)
+                except socket.error:
+                    return False
+                self.job_complete(queries)
                         
                         
                 
-    def job_complete(self, queries, coordinator_host, coordinator_port):
+    def job_complete(self, queries):
+        if self.worker_state != RUNNING:
+            return False
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            addr = (coordinator_host, PORT_COMPLETE_JOB)
+            addr = (self.coordinator_host, PORT_COMPLETE_JOB)
             complete_message = self.__generate_message("COMPLETE QUERIES", content={"queries": queries})
             try: 
                 s.connect(addr)
                 s.sendall(pickle.dumps(complete_message))
                 s.shutdown(socket.SHUT_WR)
-                self.request_job(coordinator_host, coordinator_port)
             except socket.error:
                 #send message to DNS to get new coordinator host id?
                 return False
+        return True
                 
                 
 
@@ -120,7 +136,11 @@ class IdunnoNode(SDFS):
     def run(self):
         threads: List[threading.Thread] = []
 
-        threads.append(threading.Thread(target=self.commander))
+        # threads.append(threading.Thread(target=self.commander))
+        threads.append(threading.Thread(target=self.receive_train_request))
+        threads.append(threading.Thread(target=self.turnON))
+        threads.append(threading.Thread(target=self.request_job))
+
 
         for thread in threads:
             thread.start()
