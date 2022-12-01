@@ -133,7 +133,7 @@ class IdunnoClient:
                 continue
             elif argv[0] == "train" and len(argv) > 1:
                 #send message to all worker directly? 
-                self.pretrain_request(argv[1:])
+                self.pretrain_request(argv[1])
             elif argv[0] == "upload" and len(argv) >= 3:
                 # upload dataset to sdfs
                 model_name, data_dir = argv[1], argv[2]
@@ -179,8 +179,28 @@ class IdunnoClient:
                 percentiles = np.percentile(ptime, [90, 95, 99])
                 print(f"Completed: {n_completed}")
                 print(f"\tProcessing time: average {average}\tstd {std}\tmedian {median}\t90% {percentiles[0]}\t95% {percentiles[1]}\t99% {percentiles[2]}")
+            
             elif argv[0] == "join":
                 self.sdfs.join()
+
+            # SDFS commands
+            elif argv[0] == "ls" and len(argv) == 2:
+                # ls sdfsfilename
+                self.sdfs.ft.print("ls", fname=argv[1])
+
+            elif argv[0] == "store" and len(argv) == 1:
+                # store
+                self.sdfs.ft.print("store", id=self.sdfs.id)
+
+            elif command.startswith("leave"):
+                self.sdfs.leave()
+
+            elif command.startswith("ml"):
+                print(self.sdfs.fd.ml)
+
+            elif command.startswith("id"):  # list itself
+                print(self.sdfs.id)
+
             else:
                 print(f"[ERROR] Invalid command: {command}")
 

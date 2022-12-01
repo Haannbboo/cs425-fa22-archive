@@ -704,12 +704,19 @@ class SDFS:
         return confirmed
 
     def join(self):
+        self.__clear_sdfs_directory()  # clear stall content
         assigned_id, ft = self.fd.join()
         if assigned_id != -1:
             self.id = assigned_id
         if ft is not None:
             self.ft = ft
         return self.id
+
+    def leave(self):
+        self.fd.leave()
+        self.ft.clear()
+        self.__clear_sdfs_directory()
+        # and clear ft and local files
 
     def commander(self):
         """Receives and responds to user command.
@@ -764,14 +771,10 @@ class SDFS:
 
             ### FD commands ###
             elif command.startswith("join"):
-                self.__clear_sdfs_directory()  # clear stall content
                 self.join()
 
             elif command.startswith("leave"):
-                self.fd.leave()
-                self.ft.clear()
-                self.__clear_sdfs_directory()
-                # and clear ft and local files
+                self.leave()
 
             elif command.startswith("ml"):
                 print(self.fd.ml)
