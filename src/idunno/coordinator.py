@@ -25,7 +25,7 @@ class IdunnoCoordinator(SDFS):
     def run(self):
         threads = super().run()  # run sdfs
         
-        threads.append(Thread(taret=self.client_server))
+        threads.append(Thread(target=self.client_server))
         threads.append(Thread(target=self.standby_recv))
         threads.append(Thread(target=self.job_dispatch))
         threads.append(Thread(target=self.job_collection))
