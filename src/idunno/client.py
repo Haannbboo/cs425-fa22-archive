@@ -17,28 +17,31 @@ class IdunnoClient(SDFS):
     def pretrain_request(self, model_name):
         train_message = self.__generate_message("REQ TRAIN", content={"model_name": model_name})
         targets = [i.host for i in self.all_processes]
-        train_ack = []
         
         for target in targets:
-            threading.Thread(target=self.write_to, args=(train_message, target, PRE_TRAIN_PORT, True)).start()
-            
-                    
-                   
-    def write_to(self, message, host, port, response: bool = True) -> Union[Message, int]:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:  # tcp
-            # print(f"... ... Write {message.message_type} to {remote_host}")
-            try:
-                s.connect((host, port))
-                s.sendall(pickle.dumps(message))
-                s.shutdown(socket.SHUT_WR)
-            except socket.error:
+            # threading.Thread(target=self.write_to, args=(train_message, target, PRE_TRAIN_PORT, True)).run()
+            res = self.write_to(train_message, target, PRE_TRAIN_PORT)
+            if res == 0:
+                print("pre train ERROR occur")
                 return 0
-            if response:
-                # wait for confirm
-                data = s.recv(1024)
-                resp: Message = pickle.loads(data)
-                return resp
-            return 1
+        print("Train Complete")
+        return 1
+    
+    # def write_to(self, message, host, port, response: bool = True) -> Union[Message, int]:
+    #     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:  # tcp
+    #         # print(f"... ... Write {message.message_type} to {remote_host}")
+    #         try:
+    #             s.connect((host, port))
+    #             s.sendall(pickle.dumps(message))
+    #             s.shutdown(socket.SHUT_WR)
+    #         except socket.error:
+    #             return 0
+    #         if response:
+    #             # wait for confirm
+    #             data = s.recv(1024)
+    #             resp: Message = pickle.loads(data)
+    #             return resp
+    #         return 1
 
     def send_inference(self, model_name: str, data_dir: str, batch_size: int):
         # Read local dataset and upload to sdfs
@@ -82,6 +85,8 @@ class IdunnoClient(SDFS):
         """
         print()
         print("IDunno version 0.0.1")
+        
+        super().run()
 
         while True:
             command = input(">>> ")
@@ -137,6 +142,8 @@ class IdunnoClient(SDFS):
                 percentiles = np.percentile(ptime, [90, 95, 99])
                 print(f"Completed: {n_completed}")
                 print(f"\tProcessing time: average {average}\tstd {std}\tmedian {median}\t90% {percentiles[0]}\t95% {percentiles[1]}\t99% {percentiles[2]}")
+            elif argv[0] == "join":
+                self.join()
             else:
                 print(f"[ERROR] Invalid command: {command}")
 
