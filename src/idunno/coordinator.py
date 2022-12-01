@@ -257,14 +257,14 @@ class IdunnoCoordinator(SDFS):
         """Notify standby coordinator that some ``queries`` has completed. Confirmation needed."""
         if len(queries) == 0:
             return False
-        standby_addr = self.__get_standby_coordinator_addr()
+        standby_addr = self.__get_standby_coordinator_host()
         message = self.__generate_message("QUERIES UPDATE", content={"queries": queries})
         confirm = self.write_to(message, standby_addr[0], standby_addr[1])
         return True
 
     def __notify_new_job(self, job: Job) -> bool:
         """Notify standby coordinator that a new ``job`` has been submitted. Confirmation needed."""
-        standby_addr = self.__get_standby_coordinator_addr()
+        standby_addr = self.__get_standby_coordinator_host()
         message = self.__generate_message("JOB UPDATE", content={"job": job})
         confirm = self.write_to(message, standby_addr[0], standby_addr[1])
         return True
@@ -275,8 +275,8 @@ class IdunnoCoordinator(SDFS):
         confirm = self.write_to(message, job.client[0], job.client[1])
         return bool(confirm)
 
-    def __get_standby_coordinator_addr(self) -> tuple:
-        """Gets standby coordinator host, port."""
+    def __get_standby_coordinator_host(self) -> tuple:
+        """Gets standby coordinator host."""
         # If already has standby coordinator addr, just return
         if self.standby_addr is not None:
             return self.standby_addr
@@ -284,8 +284,8 @@ class IdunnoCoordinator(SDFS):
         else:
             message = self.__generate_message("standby")
             resp = self.ask_dns(message)
-            host, port = resp.content["host"], resp.content["port"]
-            return host, port
+            host = resp.content["host"]
+            return host, PORT_STANDBY_UPDATE
 
     ### Client side commands
     def __get_processing_time(self, job_name: int) -> List[float]:  # command C2

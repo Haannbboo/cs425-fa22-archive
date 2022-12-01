@@ -178,8 +178,8 @@ class IdunnoClient(SDFS):
     def __get_coordinator_addr(self):
         message = self.__generate_message("coordinator")
         resp = self.ask_dns(message)
-        host, port = resp.content["host"], resp.content["port"]
-        return (host, port)
+        host = resp.content["host"]
+        return (host, PORT_IDUNNO_COORDINATOR)
 
     def __confirm_job_completion(self, job: Job) -> bool:
         """Checks if a ``job`` is satisfiable, aka ready for return."""
