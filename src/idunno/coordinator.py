@@ -236,14 +236,18 @@ class IdunnoCoordinator(BaseNode):
         """Defines what to do when a job is completed and confirmed by the client."""
         job.completed = True
         job.running = False
-        # Remove tmp output file from sdfs
-        self.sdfs.delete(self.__job_to_sdfs_fname(job))
+        # Remove tmp output file from sdfs and local
+        fname = self.__job_to_sdfs_fname(job)
+        self.sdfs.delete(fname)
+        if os.path.exists(fname):
+            os.remove(fname)
 
     def __drop_result_duplicates(self, job: Job) -> bool:
         """Drops duplicates in the result file."""
         # No need to sdfs get, since local version should be fresh.
         fname = self.__job_to_sdfs_fname(job)
         query_ids = set()
+        open(job.output_file, "wb").close()  # clear local output file
         output_file = open(job.output_file, "ab")
         drop_cnt = 0  # number of duplicates
         with open(fname, "rb") as f:
