@@ -155,6 +155,7 @@ class IdunnoNode(BaseNode):
                 s.shutdown(socket.SHUT_WR)
             except socket.error:
                 #send message to DNS to get new coordinator host id?
+                print("[ERROR] Can't send JOB COMPLETE")
                 return False
         return True
     
