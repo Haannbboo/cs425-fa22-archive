@@ -2,6 +2,7 @@ import threading
 from typing import List
 import socket
 from transformers import AutoFeatureExtractor, AutoModelForImageClassification
+import os
 import pickle
 from PIL import Image
 from typing import Any
@@ -15,9 +16,13 @@ UNKNOWN = -1
 RUNNING = 1
 IDLE = 0
 
-class IdunnoNode():
-    def __init__(self, sdfs) -> None:
-        self.sdfs = sdfs
+class BaseNode:
+
+    sdfs = SDFS()
+
+
+class IdunnoNode(BaseNode):
+    def __init__(self) -> None:
         self.model_map = {}
         self.worker_state = UNKNOWN
         self.coordinator_host = ""
@@ -33,6 +38,7 @@ class IdunnoNode():
                     if resp.content["host"] != "":
                         self.coordinator_host = resp.content["host"]
                 else:
+                    print(f"Received coordinator host from dns: {self.coordinator_host}")
                     break
                 time.sleep(0.5)
     
@@ -95,10 +101,12 @@ class IdunnoNode():
     
     def request_job(self):
         queries = []
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            #if coordinator fail, what to do
-            while True:
-                if self.worker_state == IDLE or self.coordinator_host == "":
+        while True:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                #if coordinator fail, what to do
+            
+                if self.worker_state == IDLE or self.coordinator_host == "" or self.sdfs.id == -1:
+                    time.sleep(0.5)
                     continue
                 try: 
                     req_job_message = self.__generate_message("REQ QUERIES")
@@ -106,25 +114,29 @@ class IdunnoNode():
                     s.connect(addr)
                     s.sendall(pickle.dumps(req_job_message))
                     s.shutdown(socket.SHUT_WR)
-                except socket.error:
+                except socket.error as e:
                     #send message to DNS to get new coordinator host id?
-                    continue
+                    print(f"MY STATE {self.worker_state}")
+                    raise e from None
                 
                 try:
-                    s.settimeout(1)
+                    s.settimeout(2)
                     data = s.recv(4096)
                     message: Message = pickle.loads(data)
                     if message.message_type == "RESP QUERIES":
                         queries = message.content["queries"]
+                        # s.sendall(b'1') #ack
                         for query in queries:
                             fname = query.input_file
-                            self.get(fname, fname)
+                            self.sdfs.get(fname, fname)
                             self.inference_result(query)
-                            s.sendall(b'\1') #ack
+                            os.remove(fname)
                     elif message.message_type == "STOP":
-                        self.worker_state == IDLE
-                    s.shutdown(socket.SHUT_WR)
-                except socket.error:
+                        self.worker_state = IDLE
+                        print("RECEIVE STOPPPPPPP")
+                except socket.error as e:
+                    print("ERR socket 2")
+                    raise e from None
                     continue
                 self.job_complete(queries)      
                 

@@ -9,12 +9,12 @@ from src.config import *
 from src.sdfs import SDFS, Message
 from .scheduling import FairTimeScheduler
 from .utils import JobTable, Job, Query, QueryTable
+from .node import BaseNode
 
 
-class IdunnoCoordinator():
+class IdunnoCoordinator(BaseNode):
 
-    def __init__(self, sdfs: SDFS) -> None:
-        self.sdfs = sdfs
+    def __init__(self) -> None:
         self.jobs = JobTable()
         self.scheduler = FairTimeScheduler()
 
@@ -107,7 +107,7 @@ class IdunnoCoordinator():
 
                         # Generate new job
                         job = self.__welcome_client(message)
-
+                        print(f"... New job requested: {job.name}")
                         self.submit_job(job)
                         
                         confirmation = self.__generate_message("NEW JOB CONFIRM")
@@ -128,18 +128,18 @@ class IdunnoCoordinator():
                     
                     if message.message_type == "REQ QUERIES":
                         job = self.scheduler.schedule(self.jobs)
-                        if job.start_time == -1:  # init start_time upon first schedule
-                            job.start_time = time.time()
-
                         if job is None:  # no active job
                             self.send_stop(conn)  # tell worker to rest
                             self.available_workers.append(message.id)
                         else:
+                            if job.start_time == -1:  # init start_time upon first schedule
+                                job.start_time = time.time()
                             queries = job.queries.get_idle_queries(job.batch_size)
                             ack = self.send_queries(queries, conn)
                             if ack:  # if worker has received works to do
                                 job.queries.mark_as_scheduled(queries)
                                 self.jobs.placement[message.id] = queries
+                                print(job.queries.scheduled_queries)
                             else:  # worker doesn't receive the job
                                 job.queries.mark_as_idle(queries)  # put work back to pool
 
@@ -165,20 +165,19 @@ class IdunnoCoordinator():
         try:
             s.sendall(pickle.dumps(message))
             s.shutdown(socket.SHUT_WR)
-        except socket.error:
+        except socket.error as e:
             return False
-        
+
         try:
             s.settimeout(1)
-            ack = s.recv(32)
+            # ack = s.recv(32)
         except socket.timeout:
             return False
         return True
 
     def send_stop(self, s: socket.socket) -> None:
         message = self.__generate_message("STOP")
-        s.sendall(message)
-        s.shutdown(socket.SHUT_WR)
+        s.sendall(pickle.dumps(message))
 
     def recv_completion(self, message: Message) -> bool:
         queries: List[Query] = message.content["queries"]
@@ -189,6 +188,7 @@ class IdunnoCoordinator():
         # Write first, then update JobTable.
         # Check result file upon completion and remove duplicates.
         if self.__write_queries_result(queries, job) and self.__notify_queries_completed(queries):
+            print(job.queries.scheduled_queries)
             job.queries.mark_as_completed(queries)
 
         if self.__job_completed(job):
@@ -205,10 +205,14 @@ class IdunnoCoordinator():
     def __write_queries_result(self, queries: List[Query], job: Job) -> bool:
         """Writes result of ``queries`` to output file on sdfs."""
         fname = self.__job_to_sdfs_fname(job)
-        success = self.sdfs.get(fname, fname)
-        if not success or not self.__local_file_ready(fname):
-            print(f"[ERROR] Failed to write queries result to sdfsfile {fname}")
-            return False
+        if self.sdfs.exists(fname):
+            success = self.sdfs.get(fname, fname)
+            if not success or not self.__local_file_ready(fname):
+                print(f"[ERROR] Failed to write queries result to sdfsfile {fname}")
+                return False
+        else:
+            # If result file not in SDFS, create it in local
+            open(fname, "wb").close()
 
         result = [f"{query.id}) {self.__query_to_output_key(query)} |--| {query.result}\n" 
                     for query in queries if query.result is not None]
@@ -228,6 +232,7 @@ class IdunnoCoordinator():
     def __handle_job_complete(self, job: Job):
         """Defines what to do when a job is completed and confirmed by the client."""
         job.completed = True
+        job.running = False
         # Remove tmp output file from sdfs
         self.sdfs.delete(self.__job_to_sdfs_fname(job))
 
@@ -248,7 +253,7 @@ class IdunnoCoordinator():
                         continue  # ignore
 
                     query_ids.add(query_id)
-                    output_file.write((line + '\n').encode('utf-8'))
+                    output_file.write(line.encode('utf-8'))
         output_file.close()
         self.sdfs.put(job.output_file, job.output_file)  # upload result file
         print(f"... Job {job.name} dropped {drop_cnt} duplicates")
@@ -259,6 +264,8 @@ class IdunnoCoordinator():
         if len(queries) == 0:
             return False
         standby_addr = self.__get_standby_coordinator_host()
+        if standby_addr[0] == "":  # no standby
+            return True
         message = self.__generate_message("QUERIES UPDATE", content={"queries": queries})
         confirm = self.sdfs.write_to(message, standby_addr[0], standby_addr[1])
         return True
@@ -266,6 +273,8 @@ class IdunnoCoordinator():
     def __notify_new_job(self, job: Job) -> bool:
         """Notify standby coordinator that a new ``job`` has been submitted. Confirmation needed."""
         standby_addr = self.__get_standby_coordinator_host()
+        if standby_addr[0] == "":  # no standby
+            return True
         message = self.__generate_message("JOB UPDATE", content={"job": job})
         confirm = self.sdfs.write_to(message, standby_addr[0], standby_addr[1])
         return True
@@ -307,7 +316,7 @@ class IdunnoCoordinator():
         sdfs_fname: List[str] = message.content["dataset"]
         job = self.jobs.generate_new_job()
         job.client = message.host, PORT_IDUNNO_CLIENT
-        job.batch_size = batch_size
+        job.batch_size = int(batch_size)
         job.model = model_name
         job.name = model_name  # for now job name is model_name
         job.output_file = model_name  # for now

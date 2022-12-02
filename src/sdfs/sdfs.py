@@ -144,7 +144,7 @@ class SDFSFile:
 
 class SDFS:
     def __init__(self, host: str = ..., port: int = ...):
-        self.id = 0
+        self.id = -1
         self.host = host
         if host is Ellipsis:
             self.host = get_host()
@@ -547,7 +547,7 @@ class SDFS:
             try:
                 # Recv chunk
                 s.settimeout(1.2)
-                data = self.__recv_message(s)
+                data = self.recv_message(s)
                 chunk_message: Message = pickle.loads(data)
                 return chunk_message.content["payload"]
             except socket.timeout:
@@ -690,8 +690,12 @@ class SDFS:
             return 1
         else:
             self.__remove_from_local(temp_localfilename)
+            print("HEREERERE")
             
         return 0
+
+    def exists(self, sdfsfilename: str) -> bool:
+        return sdfsfilename in self.ft.files
 
     def delete(self, sdfsfilename: str) -> bool:
         """Deletes sdfsfilename from SDFS."""

@@ -111,9 +111,9 @@ class DNSserver:
                             "assigned_id": self.global_unique_id,
                         }
                         
-                        if self.global_unique_id == 0:
+                        if self.coordinator_host == "":
                             self.coordinator_host = msg.host
-                        if self.global_unique_id == 1:
+                        elif self.standby_host == "":
                             self.standby_host = msg.host
                         
                         self.global_unique_id += 1
@@ -146,6 +146,7 @@ class DNSserver:
                             "host": self.standby_host,
                         }
                         standby_info = self.__generate_message("RESP_STANDBY", content)
+                        print(f"Receive message to give standby coordinator host: {self.standby_host} from {msg.host}")
                         s.sendto(pickle.dumps(standby_info), addr)
                         
             except Exception as e:
