@@ -85,6 +85,7 @@ class IdunnoNode():
         model_name = query.model
         extractor, model = self.model_map[model_name]
         image = Image.open(query.input_file)
+        image = image if image.mode == "RGB" else image.convert("RGB")
         inputs = extractor(image, return_tensors="pt")
         outputs = model(**inputs)
         logits = outputs.logits
