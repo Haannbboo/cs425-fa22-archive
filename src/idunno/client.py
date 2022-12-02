@@ -43,7 +43,6 @@ class IdunnoClient(BaseNode):
             if res == 0:
                 print("pre train ERROR occur")
                 return 0
-        print("Train Complete")
         return 1
     
     def write_with_resp(self, message, host, port, response: bool = True) -> Union[Message, int]:
@@ -56,7 +55,12 @@ class IdunnoClient(BaseNode):
                 return 0
             if response:
                 # wait for confirm
-                data = s.recv(1024)
+                data = bytearray()
+                while True:
+                    packet = s.recv(4 * 1024)
+                    if not packet:
+                        break
+                    data.extend(packet)
                 resp: Message = pickle.loads(data)
                 return resp
             return 1
@@ -64,26 +68,24 @@ class IdunnoClient(BaseNode):
     def send_inference(self, model_name: str, data_dir: str, batch_size: int):
         # Read local dataset and upload to sdfs
         data_files = os.listdir(data_dir)
-        sdfs_fname = [f"{model_name}{fname}" for fname in data_files]
 
         # Send to coordinator
         to_host, to_port = self.__get_coordinator_addr()
-        message = self.__generate_message("NEW JOB", content={"model_name": model_name, "batch_size": batch_size, "dataset": sdfs_fname})
+        message = self.__generate_message("NEW JOB", content={"model_name": model_name, "batch_size": batch_size, "dataset": data_files})
         confirmed: Message = self.sdfs.write_to(message, to_host, to_port)
         if confirmed:  # Message does not implement __bool__
             return True
         else:
             return False
 
-    def upload(self, model_name: str, data_dir: str):
+    def upload(self, data_dir: str):
         data_files = os.listdir(data_dir)
         data_fpath = [os.path.join(data_dir, fname) for fname in data_files]
-        sdfs_fname = [model_name + fname for fname in data_files]
         i = 0
         print("... Putting inference dataset to sdfs")
         with tqdm(total=len(data_files)) as pbar:
             while i < len(data_files):
-                confirmed = self.sdfs.put(data_fpath[i], sdfs_fname[i])
+                confirmed = self.sdfs.put(data_fpath[i], data_files[i])
                 if confirmed:
                     i += 1
                     pbar.update(1)
@@ -119,7 +121,7 @@ class IdunnoClient(BaseNode):
         Commands:
         =========
         - train [models name]
-        - upload [model name] [input directory]
+        - upload [input directory]
         - inference [model name] [input directory] [batch size]
         
         """
@@ -136,8 +138,8 @@ class IdunnoClient(BaseNode):
                 self.pretrain_request(argv[1])
             elif argv[0] == "upload" and len(argv) >= 3:
                 # upload dataset to sdfs
-                model_name, data_dir = argv[1], argv[2]
-                self.upload(model_name, data_dir)
+                data_dir = argv[1]
+                self.upload(data_dir)
             elif argv[0] == "inference" and len(argv) >= 3:
                 # inference resnet-50 train/ 4
                 #inference specific task by specific model in given batch size
@@ -160,6 +162,17 @@ class IdunnoClient(BaseNode):
             elif argv[0] == "result" and len(argv) > 1:
                 #show the result of given job (demo C4)
                 continue
+
+            elif argv[0] == "C1":
+                message = self.__generate_message("C1")
+                to_host, to_port = self.__get_coordinator_addr()
+                resp: Message = self.write_with_resp(message, to_host, to_port)
+                job_rates = resp.content["resp"]
+                print("Job\t\t\tRate")
+                print("---\t\t\t----")
+                for job in job_rates:
+                    print(f"{job}\t\t\t{job_rates[job]}")
+
             elif argv[0] == "assign" or argv[0] == "C5":
                 #show the current set of VMs assigned to each job (demo C5)
                 message = self.__generate_message("C5")
@@ -171,6 +184,11 @@ class IdunnoClient(BaseNode):
                 message = self.__generate_message("C2", content={"job_name": argv[1]})
                 to_host, to_port = self.__get_coordinator_addr()
                 resp: Message = self.write_with_resp(message, to_host, to_port)
+
+                if resp.message_type == "ERROR":  # no model for that name found
+                    print(f"[ERROR] No model with name: {argv[1]}")
+                    continue
+
                 ptime: List[float] = resp.content["resp"]  # list of processing time
                 # Calculate average, percentiles, std
                 ptime = np.array(ptime)
@@ -178,7 +196,7 @@ class IdunnoClient(BaseNode):
                 average, std, median = np.average(ptime), np.std(ptime), np.median(ptime)
                 percentiles = np.percentile(ptime, [90, 95, 99])
                 print(f"Completed: {n_completed}")
-                print(f"\tProcessing time: average {average}\tstd {std}\tmedian {median}\t90% {percentiles[0]}\t95% {percentiles[1]}\t99% {percentiles[2]}")
+                print(f"Processing time: average {average}\tstd {std}\tmedian {median}\t90% {percentiles[0]}\t95% {percentiles[1]}\t99% {percentiles[2]}")
             elif argv[0] == "join":
                 self.join()
             else:
@@ -186,7 +204,6 @@ class IdunnoClient(BaseNode):
 
     def join(self):
         self.sdfs.join()
-        print(f"MY ID: {self.sdfs.id}")
 
     def __get_coordinator_addr(self):
         message = self.__generate_message("coordinator")

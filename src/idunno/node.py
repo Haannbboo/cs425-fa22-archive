@@ -43,11 +43,11 @@ class IdunnoNode(BaseNode):
                 time.sleep(0.5)
     
     def pretrain(self, model_name):
-        print("... pretrianing ", model_name)
+        print(f"... Pretrianing model {model_name}")
         extractor = AutoFeatureExtractor.from_pretrained("microsoft/" + model_name)
         model = AutoModelForImageClassification.from_pretrained("microsoft/" + model_name)
         self.model_map[model_name] = (extractor, model)
-        print("finish one pretrain")
+        print(f"... Finish pretrain model: {model_name}")
     
     #only receive START message to turn IDLE to RUNNING
     def turnON(self):
@@ -124,12 +124,15 @@ class IdunnoNode(BaseNode):
                     data = s.recv(4096)
                     message: Message = pickle.loads(data)
                     if message.message_type == "RESP QUERIES":
-                        queries = message.content["queries"]
+                        queries: List[Query] = message.content["queries"]
                         # s.sendall(b'1') #ack
                         for query in queries:
+                            start = time.time()
                             fname = query.input_file
                             self.sdfs.get(fname, fname)
                             self.inference_result(query)
+                            end = time.time()
+                            query.processing_time = end - start
                             os.remove(fname)
                     elif message.message_type == "STOP":
                         self.worker_state = IDLE

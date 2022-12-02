@@ -910,6 +910,7 @@ class SDFS:
         while time.time() - now < PUT_TIMEOUT:
             time.sleep(0.1)
             self.put_ack_lock.acquire()
+            self.put_ack.setdefault(mid, 0)
             confirmation = self.put_ack[mid]
             self.put_ack_lock.release()
             if confirmation >= confirm:

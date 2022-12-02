@@ -23,7 +23,7 @@ class IdunnoCoordinator(BaseNode):
         self.standby_addr = None
 
     def run(self) -> List[Thread]:
-        # threads = self.sdfs.run()  # run sdfs
+        self.__remove_tmp_files()
         
         threads = []
         
@@ -89,11 +89,19 @@ class IdunnoCoordinator(BaseNode):
                 with conn:
                     data = self.sdfs.recv_message(conn)
                     message: Message = pickle.loads(data)
+                    
+                    if message.message_type == "C1":
+                        rates = self.__get_processing_rate()
+                        resp = self.__generate_message("RESP C1", content={"resp": rates})
+                        conn.sendall(pickle.dumps(resp))
 
-                    if message.message_type == "C2":
+                    elif message.message_type == "C2":
                         job_name = message.content["job_name"]
                         ptime = self.__get_processing_time(job_name)
-                        resp = self.__generate_message("RESP C2", content={"resp": ptime})
+                        if ptime is None:
+                            resp = self.__generate_message("ERROR")
+                        else:
+                            resp = self.__generate_message("RESP C2", content={"resp": ptime})
                         conn.sendall(pickle.dumps(resp))
                     
                     elif message.message_type == "C5":
@@ -124,7 +132,6 @@ class IdunnoCoordinator(BaseNode):
                 with conn:
                     data = self.sdfs.recv_message(conn)
                     message: Message = pickle.loads(data)
-                    print(f"I have recieved the message {message.message_type}")
                     
                     if message.message_type == "REQ QUERIES":
                         job = self.scheduler.schedule(self.jobs)
@@ -132,14 +139,11 @@ class IdunnoCoordinator(BaseNode):
                             self.send_stop(conn)  # tell worker to rest
                             self.available_workers.append(message.id)
                         else:
-                            if job.start_time == -1:  # init start_time upon first schedule
-                                job.start_time = time.time()
                             queries = job.queries.get_idle_queries(job.batch_size)
                             ack = self.send_queries(queries, conn)
                             if ack:  # if worker has received works to do
                                 job.queries.mark_as_scheduled(queries)
                                 self.jobs.placement[message.id] = queries
-                                print(job.queries.scheduled_queries)
                             else:  # worker doesn't receive the job
                                 job.queries.mark_as_idle(queries)  # put work back to pool
 
@@ -188,7 +192,6 @@ class IdunnoCoordinator(BaseNode):
         # Write first, then update JobTable.
         # Check result file upon completion and remove duplicates.
         if self.__write_queries_result(queries, job) and self.__notify_queries_completed(queries):
-            print(job.queries.scheduled_queries)
             job.queries.mark_as_completed(queries)
 
         if self.__job_completed(job):
@@ -300,6 +303,8 @@ class IdunnoCoordinator(BaseNode):
     ### Client side commands
     def __get_processing_time(self, job_name: int) -> List[float]:  # command C2
         job: Job = self.jobs.get_job_by_name(job_name)
+        if job is None:
+            return None
         completed_queries = job.queries.completed_queries[:]
         processing_time = [query.processing_time for query in completed_queries]
         return processing_time
@@ -309,6 +314,9 @@ class IdunnoCoordinator(BaseNode):
         placement = {k: v[0].job_name for k, v in self.jobs.placement.items() if len(v) > 0}
         return placement
 
+    def __get_processing_rate(self) -> Dict[str, float]:  # command C1
+        return {job.name: job.rate for job in self.jobs if job.running}
+        
     def __welcome_client(self, message: Message) -> Job:
         """Parses client's new job request message. Returns a formatted ``Job``."""
         model_name = message.content["model_name"]
@@ -339,6 +347,13 @@ class IdunnoCoordinator(BaseNode):
     @staticmethod
     def __job_to_sdfs_fname(job: Job) -> str:
         return job.output_file + ".tmp"
+
+    @staticmethod
+    def __remove_tmp_files():
+        files = os.listdir()
+        for fname in files:
+            if fname.endswith("tmp"):
+                os.remove(fname)
 
     def __generate_message(self, m_type: str, content: Any = None) -> Message:
         """Generates message for all communications."""

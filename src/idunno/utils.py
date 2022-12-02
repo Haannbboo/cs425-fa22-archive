@@ -80,7 +80,7 @@ class Job:
     client: tuple = None  # issuer's host, port
     batch_size: int = 1
 
-    start_time: float = -1
+    start_time: float = time.time()
 
     # States
     running: bool = True
@@ -91,7 +91,7 @@ class Job:
         """Number of queries / second"""
         if self.queries.completed == 0:
             return 0
-        return (time.time() - self.start_time) / self.queries.completed
+        return self.queries.completed / (time.time() - self.start_time)
 
 
 class JobTable:
