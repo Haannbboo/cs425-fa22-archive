@@ -11,17 +11,15 @@ from src.sdfs import SDFS, Message
 from src.config import *
 from .utils import Job
 from .coordinator import IdunnoCoordinator
-from .node import IdunnoNode
+from .node import IdunnoNode, BaseNode
 
 
-class IdunnoClient:
+class IdunnoClient(BaseNode):
     
     def __init__(self, coordinator_on: bool = True) -> None:
-        self.sdfs = SDFS()
-        self.coordinator = IdunnoCoordinator(self.sdfs)
-        self.worker = IdunnoNode(self.sdfs)
+        self.coordinator = IdunnoCoordinator()
+        self.worker = IdunnoNode()
         
-
         self.coordinator_on = coordinator_on
         
     def run(self):
@@ -89,6 +87,7 @@ class IdunnoClient:
                 if confirmed:
                     i += 1
                     pbar.update(1)
+        print("... Dataset upload completed")
 
     def recv_completion(self):
         """Receives job completion from coordinator."""
@@ -109,7 +108,7 @@ class IdunnoClient:
                         job: Job = message.content["job"]
                         if self.__confirm_job_completion(job):
                             confirmation = self.__generate_message("JOB COMPLETE CONFIRM")
-                            conn.sendall(confirmation)
+                            conn.sendall(pickle.dumps(confirmation))
                         if self.sdfs.get(job.output_file, job.output_file):
                             print(f"\nJob {job.name} completed! Results written to {job.output_file}")
                         else:
@@ -181,9 +180,13 @@ class IdunnoClient:
                 print(f"Completed: {n_completed}")
                 print(f"\tProcessing time: average {average}\tstd {std}\tmedian {median}\t90% {percentiles[0]}\t95% {percentiles[1]}\t99% {percentiles[2]}")
             elif argv[0] == "join":
-                self.sdfs.join()
+                self.join()
             else:
                 print(f"[ERROR] Invalid command: {command}")
+
+    def join(self):
+        self.sdfs.join()
+        print(f"MY ID: {self.sdfs.id}")
 
     def __get_coordinator_addr(self):
         message = self.__generate_message("coordinator")

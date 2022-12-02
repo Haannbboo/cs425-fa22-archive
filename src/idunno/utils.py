@@ -89,6 +89,8 @@ class Job:
     @property
     def rate(self) -> float:
         """Number of queries / second"""
+        if self.queries.completed == 0:
+            return 0
         return (time.time() - self.start_time) / self.queries.completed
 
 
@@ -98,6 +100,8 @@ class JobTable:
     def __init__(self) -> None:
         self.jobs: List[Job] = []
         self.placement: Dict[int, List[Query]] = {}
+
+        self.max_job_id = 0
 
     def __len__(self) -> int:
         return len(self.jobs)
@@ -111,14 +115,10 @@ class JobTable:
                 return job
         raise ValueError(f"No job with id {job_id}")
 
-    @property
-    def highest_job_id(self):
-        if len(self.jobs) == 0:
-            return 0
-        return max(self.jobs, key=lambda x: x.id).id
-
     def generate_new_job(self) -> Job:
-        return Job(self.highest_job_id)
+        new_job = Job(self.max_job_id)
+        self.max_job_id += 1
+        return new_job
 
     def get_job_by_name(self, job_name: str) -> Job:
         for job in self.jobs:
