@@ -415,7 +415,7 @@ class FailureDetector:
                             
                             #send FAILURE message to sdfs by TCP 
                             failure_message = self.generate_message(
-                                "FAILURE", content={"leaved_id":message.content["id"], "time_stamp": time.time()}
+                                "FAILURE", content={"id":message.content["id"], "time_stamp": time.time()}
                             )
                             #test change socket 
                             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s1:
