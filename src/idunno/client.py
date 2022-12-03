@@ -1,6 +1,6 @@
 import socket
 import time
-from typing import Any, Union, List 
+from typing import Any, Union, List , Dict
 import pickle
 import threading
 import os
@@ -79,6 +79,9 @@ class IdunnoClient(BaseNode):
             return False
 
     def upload(self, data_dir: str):
+        if not os.path.exists(data_dir):
+            print(f"[ERROR] No such directory: {data_dir}")
+            return
         data_files = os.listdir(data_dir)
         data_fpath = [os.path.join(data_dir, fname) for fname in data_files]
         i = 0
@@ -155,23 +158,28 @@ class IdunnoClient(BaseNode):
                     continue
 
                 self.send_inference(model_name, data_dir, batch_size)
-                    
-            elif argv[0] == "state" and len(argv) > 1:
-                #show the job's state (demo C1)
-                continue
+
             elif argv[0] == "result" and len(argv) > 1:
                 #show the result of given job (demo C4)
                 continue
-
+            
+            ### Demo commands
             elif argv[0] == "C1":
+                # Show: i) 10s window query rate, ii) number of queries processed
                 message = self.__generate_message("C1")
                 to_host, to_port = self.__get_coordinator_addr()
                 resp: Message = self.write_with_resp(message, to_host, to_port)
-                job_rates = resp.content["resp"]
-                print("Job\t\t\tRate")
-                print("---\t\t\t----")
+                job_rates: Dict[str, List] = resp.content["resp"]
+
+                if len(job_rates) == 0:
+                    continue
+                
+                # pretty print
+                max_len = len(max(job_rates, key=lambda k: len(k)))
+                print(f"{'Job'.center(max_len)}\tProcessed\tRate")
+                print(f"{'-'*max_len}\t---------\t----")
                 for job in job_rates:
-                    print(f"{job}\t\t\t{job_rates[job]}")
+                    print(f"{job.center(max_len)}\t{str(job_rates[job][0]).center(9)}\t{round(job_rates[job][1], 4)}")
 
             elif argv[0] == "assign" or argv[0] == "C5":
                 #show the current set of VMs assigned to each job (demo C5)
@@ -179,6 +187,7 @@ class IdunnoClient(BaseNode):
                 to_host, to_port = self.__get_coordinator_addr()
                 resp: Message = self.write_with_resp(message, to_host, to_port)  # resp from coordinator
                 print(resp.content["resp"])
+
             elif argv[0] == "report" or argv[0] == "C2" and len(argv) >= 2:
                 # get current processing time
                 message = self.__generate_message("C2", content={"job_name": argv[1]})
@@ -192,13 +201,22 @@ class IdunnoClient(BaseNode):
                 ptime: List[float] = resp.content["resp"]  # list of processing time
                 # Calculate average, percentiles, std
                 ptime = np.array(ptime)
-                n_completed = len(ptime)
                 average, std, median = np.average(ptime), np.std(ptime), np.median(ptime)
                 percentiles = np.percentile(ptime, [90, 95, 99])
-                print(f"Completed: {n_completed}")
-                print(f"Processing time: average {average}\tstd {std}\tmedian {median}\t90% {percentiles[0]}\t95% {percentiles[1]}\t99% {percentiles[2]}")
+                print(f"Processing time: average {round(average, 4)}\tstd {round(std, 4)}\tmedian {round(median, 4)}\t90% {round(percentiles[0], 4)}\t95% {round(percentiles[1], 4)}\t99% {round(percentiles[2], 4)}")
+            
+            ### Useful commands
+            elif argv[0] == "jobs":
+                message = self.__generate_message("jobs")
+                to_host, to_port = self.__get_coordinator_addr()
+                resp: Message = self.write_with_resp(message, to_host, to_port)
+                print(resp.content["resp"])
+
+            ### ML commands
             elif argv[0] == "join":
                 self.join()
+            elif argv[0] == "ml":
+                print(self.sdfs.fd.ml)
             else:
                 print(f"[ERROR] Invalid command: {command}")
 

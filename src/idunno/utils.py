@@ -13,6 +13,7 @@ class Query:
     worker: int = -1  # worker id
     result: str = None  # inference result
     processing_time: float = 0.0
+    scheduled_time: float = 0.0  # when this query is scheduled by coordinator
 
     def __eq__(self, __o: object) -> bool:
         return self.id == __o.id
@@ -39,6 +40,11 @@ class QueryTable:
     def completed(self) -> int:
         return len(self.completed_queries)
 
+    @property
+    def processed(self) -> int:
+        """Runing count, since the start of the model."""
+        return len(self.completed_queries) + len(self.scheduled_queries)
+
     def add_query(self, job_id: int, job_name: str, model_name: str, sdfsfname: str):
         new_query = Query(self.max_query_id, job_id, job_name, model_name, sdfsfname)
         self.max_query_id += 1
@@ -61,6 +67,7 @@ class QueryTable:
 
     def mark_as_scheduled(self, queries: List[Query]):
         for query in queries:
+            query.scheduled_time = time.time()
             self.scheduled_queries.append(query)
             self.hold_queries.remove(query)
 
@@ -68,6 +75,7 @@ class QueryTable:
         for query in queries:
             self.completed_queries.append(query)
             self.scheduled_queries.remove(query)
+        self.completed_queries.sort(key=lambda query: query.scheduled_time, reverse=True)
 
     def mark_scheduled_queries_as_idle(self, queries: List[Query]):
         for query in queries:
@@ -97,7 +105,15 @@ class Job:
         """Number of queries / second"""
         if self.queries.completed == 0:
             return 0
-        return self.queries.completed / (time.time() - self.start_time)
+        # Count queries that started within last 10 seconds
+        completed = 0
+        now = time.time()
+        for query in self.queries.completed_queries:
+            if now - query.scheduled_time < 10:
+                completed += 1
+            else:
+                break  # sorted in descending order by scheduled_time
+        return completed / 10
 
 
 class JobTable:
@@ -108,6 +124,12 @@ class JobTable:
         self.placement: Dict[int, List[Query]] = {}
 
         self.max_job_id = 0
+
+    def __contains__(self, job_id: int) -> bool:
+        for job in self.jobs:
+            if job_id == job.id:
+                return True
+        return False
 
     def __len__(self) -> int:
         return len(self.jobs)
@@ -120,6 +142,12 @@ class JobTable:
             if job.id == job_id:
                 return job
         raise ValueError(f"No job with id {job_id}")
+
+    def __repr__(self) -> str:
+        ret = []
+        for job in self.jobs:
+            ret.append(f"<Job {job.id}>")
+        return "\n".join(ret)
 
     def generate_new_job(self) -> Job:
         new_job = Job(self.max_job_id)

@@ -66,14 +66,21 @@ class IdunnoCoordinator(BaseNode):
                         queries: List[Query] = message.content["queries"]  # len > 0
                         job: Job = self.jobs[queries[0].job_id]
                         for query in queries:  # move from idle to completed
-                            job.queries.completed_queries.append(query)
-                            job.queries.idle_queries.remove(query)
+                            try:
+                                job.queries.idle_queries.remove(query)
+                            except ValueError:
+                                continue
+                            else:
+                                job.queries.completed_queries.append(query)
+                            
+                        job.queries.completed_queries.sort(key=lambda query: query.scheduled_time, reverse=True)
                         confirm = self.__generate_message("UPDATE CONFIRM")
                         conn.sendall(pickle.dumps(confirm))
 
                     elif message.message_type == "JOB UPDATE":
                         job: Job = message.content["job"]
-                        self.jobs.append(job)
+                        if job not in self.jobs:
+                            self.jobs.append(job)
                         confirm = self.__generate_message("UPDATE CONFIRM")
                         conn.sendall(pickle.dumps(confirm))
 
@@ -137,6 +144,10 @@ class IdunnoCoordinator(BaseNode):
                         confirmation = self.__generate_message("NEW JOB CONFIRM")
                         conn.sendall(pickle.dumps(confirmation))
 
+                    elif message.message_type == "jobs":
+                        # Return JobTable
+                        resp = self.__generate_message("RESP jobs", content={"resp": repr(self.jobs)})
+                        conn.sendall(pickle.dumps(resp))
 
     def job_dispatch(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -156,6 +167,8 @@ class IdunnoCoordinator(BaseNode):
                             self.available_workers.append(message.id)
                         else:
                             queries = job.queries.get_idle_queries(job.batch_size)
+                            for query in queries:
+                                query.scheduled_time = time.time()
                             ack = self.send_queries(queries, conn)
                             if ack:  # if worker has received works to do
                                 job.queries.mark_as_scheduled(queries)
@@ -346,8 +359,8 @@ class IdunnoCoordinator(BaseNode):
         placement = {k: v[0].job_name for k, v in self.jobs.placement.items() if len(v) > 0}
         return placement
 
-    def __get_processing_rate(self) -> Dict[str, float]:  # command C1
-        return {job.name: job.rate for job in self.jobs if job.running}
+    def __get_processing_rate(self) -> Dict[str, List]:  # command C1
+        return {job.name: [job.queries.processed, job.rate] for job in self.jobs if job.running}
         
     def __welcome_client(self, message: Message) -> Job:
         """Parses client's new job request message. Returns a formatted ``Job``."""
