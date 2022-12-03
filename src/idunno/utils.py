@@ -155,10 +155,11 @@ class JobTable:
         return new_job
 
     def get_job_by_name(self, job_name: str) -> Job:
+        ret: Job = None
         for job in self.jobs:
-            if job.name == job_name:
-                return job
-        return None
+            if job.name == job_name and (ret is None or job.id > ret.id):
+                ret = job
+        return ret
 
     def append(self, job: Job):
         self.jobs.append(job)
