@@ -260,7 +260,7 @@ class SDFS:
                 conn, addr = s.accept()
                 data = conn.recv(4096)
                 message: Message = pickle.loads(data)
-                leaved = message.content["leaved_id"]
+                leaved = message.content["id"]
                 time_stamp = message.content["time_stamp"]
                 print(f"-----SDFS: received id{leaved} leaved at {time_stamp}")
                 self.ft_lock.acquire()

@@ -238,6 +238,9 @@ class FailureDetector:
         self.logger = getLogger(__name__)
 
         self.state = LEAVED
+        
+        self.coordinator = ""
+        self.coordinator_id = -1
 
     """
     Get neighboors:
@@ -544,6 +547,8 @@ class FailureDetector:
         introducer_host = message.content["introducer_host"]
         introducer_port = message.content["introducer_port"]
         self.id = message.content["assigned_id"]
+        self.coordinator = message.content["coordinator_host"]
+        self.coordinator_id = message.content["coordinator_id"]
 
         # send JOIN to introducer
         message = self.generate_message("JOIN")
@@ -638,12 +643,21 @@ class FailureDetector:
                             
                             #send FAILURE message to sdfs by TCP 
                             failure_message = self.generate_message(
-                                "FAILURE", content={"leaved_id": id, "time_stamp": time_stamp}
+                                "FAILURE", content={"id": id, "time_stamp": time_stamp}
                             )
                             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s1:
                                 s1.connect((self.host, PORT_SDFS_GETFAILURE))
                                 s1.sendall(pickle.dumps(failure_message))
                                 s1.shutdown(socket.SHUT_WR)
+                            
+                            #send FAILURE message to coordinator by TCP if it is not the coordinator's failure
+                            if id != self.coordinator_id:
+                                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s2:
+                                    s2.connect((self.coordinator, PORT_COORDINATOR_FAILURE_LISTEN))
+                                    s2.sendall(pickle.dumps(failure_message))
+                                    s2.shutdown(socket.SHUT_WR)
+                            
+                            
                         
                     
 
