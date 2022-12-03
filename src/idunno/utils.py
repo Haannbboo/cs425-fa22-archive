@@ -111,8 +111,8 @@ class Job:
         for query in self.queries.completed_queries:
             if now - query.scheduled_time < 10:
                 completed += 1
-            else:
-                break  # sorted in descending order by scheduled_time
+            # else:
+            #     break  # sorted in descending order by scheduled_time
         return completed / 10
 
 

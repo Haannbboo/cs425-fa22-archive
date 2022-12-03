@@ -152,6 +152,15 @@ class IdunnoCoordinator(BaseNode):
                         resp = self.__generate_message("RESP jobs", content={"resp": repr(self.jobs)})
                         conn.sendall(pickle.dumps(resp))
 
+                    elif message.message_type == "completed":
+                        # Return last 10 completed queries for each job
+                        completed = {}
+                        for job in self.jobs:
+                            completed[job.name] = job.queries.completed_queries[:10]
+                        resp = self.__generate_message("RESP completed", content={"resp": completed})
+                        conn.sendall(pickle.dumps(resp))
+
+
     def job_dispatch(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -170,8 +179,6 @@ class IdunnoCoordinator(BaseNode):
                             self.available_workers.append(message.id)
                         else:
                             queries = job.queries.get_idle_queries(job.batch_size)
-                            for query in queries:
-                                query.scheduled_time = time.time()
                             ack = self.send_queries(queries, conn)
                             if ack:  # if worker has received works to do
                                 job.queries.mark_as_scheduled(queries)

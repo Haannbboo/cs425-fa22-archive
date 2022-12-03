@@ -212,6 +212,24 @@ class IdunnoClient(BaseNode):
                 resp: Message = self.write_with_resp(message, to_host, to_port)
                 print(resp.content["resp"])
 
+            elif argv[0] == "completed":
+                # print the last 10 completed queries
+                message = self.__generate_message("completed")
+                to_host, to_port = self.__get_coordinator_addr()
+                resp: Message = self.write_with_resp(message, to_host, to_port)
+                content: Dict[str, List] = resp.content["resp"]
+                
+                if len(resp.content) == 0:
+                    continue
+                    
+                # pretty print
+                for job_name in content:
+                    print(f"{job_name}:")
+                    for query in content[job_name]:
+                        print(query)
+                    print()
+
+
             ### ML commands
             elif argv[0] == "join":
                 self.join()
