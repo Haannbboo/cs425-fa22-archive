@@ -3,6 +3,7 @@
 Credits: Peiran Wang, Hanbo Guo
 """
 
+
 import threading
 import socket
 import time
@@ -11,8 +12,9 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, List, Dict, Tuple, Union, TYPE_CHECKING
 
-from .config import *
+from src.config import *
 from .utils import getLogger, Message, get_host, socket_should_stop
+
 
 if TYPE_CHECKING:
     from src.sdfs import FileTable
