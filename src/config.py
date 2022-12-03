@@ -17,6 +17,7 @@ PORT_COMPLETE_JOB = 10235  # worker report job completion
 PORT_START_WORKING = 10300  # worker listens to this port to know if they can be lazy
 PORT_STANDBY_UPDATE = 10310  # communication between coordinator & standby
 PRE_TRAIN_PORT = 10236
+PORT_COORDINATOR_FAILURE_LISTEN = 10089  # coordinator receives worker failure from this
 
 # Test ports #
 PORT_TEST_UDPSERVER = 9213

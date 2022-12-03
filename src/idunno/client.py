@@ -136,7 +136,7 @@ class IdunnoClient(BaseNode):
             elif argv[0] == "train" and len(argv) > 1:
                 #send message to all worker directly? 
                 self.pretrain_request(argv[1])
-            elif argv[0] == "upload" and len(argv) >= 3:
+            elif argv[0] == "upload" and len(argv) >= 2:
                 # upload dataset to sdfs
                 data_dir = argv[1]
                 self.upload(data_dir)

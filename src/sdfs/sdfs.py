@@ -586,10 +586,16 @@ class SDFS:
         if threads is False:
             # Simply send tcp to targets
             for target in targets:
-                self.write_to(message, self.__id_to_host(target), port, confirm=confirm)
+                try:  # this try/except is a patch
+                    self.write_to(message, self.__id_to_host(target), port, confirm=confirm)
+                except KeyError:  # ml does not has id = target
+                    continue  # just ignore
         else:
             for target in targets:
-                host = self.__id_to_host(target)
+                try:
+                    host = self.__id_to_host(target)
+                except KeyError:  # ml does not has id = target
+                    continue  # just ignore
                 threading.Thread(target=self.write_to, args=(message, host, port, confirm, )).start()
         
         confirmation = 0
@@ -899,7 +905,10 @@ class SDFS:
         """
         max_version, max_version_replica, max_version_fsize = 0, 0, -1
         for r in replicas:
-            version, fsize = self.read_replica_version(sdfsfilename, self.__id_to_host(r))
+            try:
+                version, fsize = self.read_replica_version(sdfsfilename, self.__id_to_host(r))
+            except KeyError:  # if r not in ml, just ignore
+                continue
             if version > max_version:
                 max_version, max_version_replica, max_version_fsize = version, r, fsize
 

@@ -77,6 +77,22 @@ class IdunnoCoordinator(BaseNode):
                         confirm = self.__generate_message("UPDATE CONFIRM")
                         conn.sendall(pickle.dumps(confirm))
 
+    def failure_recv(self):
+        """Receives failure from DNS (maybe?) and handle worker failure."""
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("", PORT_COORDINATOR_FAILURE_LISTEN))
+
+            while True:
+                data, _ = s.recvfrom(4096)
+
+                if data:
+                    message: Message = pickle.loads(data)
+                    
+                    failed_worker_id = message.content["id"]
+                    self.__handle_worker_failure(failed_worker_id)
+                    
+
     def client_server(self):
         """Serves client's request."""
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -266,6 +282,18 @@ class IdunnoCoordinator(BaseNode):
         print(f"... Job {job.name} dropped {drop_cnt} duplicates")
         return True
 
+    def __handle_worker_failure(self, worker_id: int):
+        """What to do when ``worker_id`` failed."""
+        if worker_id not in self.jobs.placement:
+            return
+        
+        queries = self.jobs.placement[worker_id]
+        if len(queries) > 0:
+            job_id = queries[0].job_id
+            job = self.jobs[job_id]
+            job.queries.mark_scheduled_queries_as_idle(queries)
+        del self.jobs.placement[worker_id]  # remove from placement
+
     def __notify_queries_completed(self, queries: List[Query]) -> bool:
         """Notify standby coordinator that some ``queries`` has completed. Confirmation needed."""
         if len(queries) == 0:
@@ -275,7 +303,7 @@ class IdunnoCoordinator(BaseNode):
             return True
         message = self.__generate_message("QUERIES UPDATE", content={"queries": queries})
         confirm = self.sdfs.write_to(message, standby_addr[0], standby_addr[1])
-        return True
+        return bool(confirm)
 
     def __notify_new_job(self, job: Job) -> bool:
         """Notify standby coordinator that a new ``job`` has been submitted. Confirmation needed."""
@@ -284,7 +312,7 @@ class IdunnoCoordinator(BaseNode):
             return True
         message = self.__generate_message("JOB UPDATE", content={"job": job})
         confirm = self.sdfs.write_to(message, standby_addr[0], standby_addr[1])
-        return True
+        return bool(confirm)
 
     def __notify_client_job_completed(self, job: Job) -> bool:
         """Notify client that a ``job`` has completed. Needs client's confirmation."""

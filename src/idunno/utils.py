@@ -69,6 +69,12 @@ class QueryTable:
             self.completed_queries.append(query)
             self.scheduled_queries.remove(query)
 
+    def mark_scheduled_queries_as_idle(self, queries: List[Query]):
+        for query in queries:
+            if query in self.scheduled_queries:  # this might be useful, but who knows
+                self.idle_queries.append(query)
+                self.scheduled_queries.remove(query)
+
 
 @dataclass
 class Job:
