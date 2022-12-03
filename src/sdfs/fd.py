@@ -15,6 +15,8 @@ from typing import Any, List, Dict, Tuple, Union, TYPE_CHECKING
 from src.config import *
 from .utils import getLogger, Message, get_host, socket_should_stop
 
+import sys
+
 
 if TYPE_CHECKING:
     from src.sdfs import FileTable
@@ -397,6 +399,11 @@ class FailureDetector:
                         leave_message = self.generate_message("LEAVE", content=message.content)
 
                         self.multicast(leave_message, s)  # tell neighbor
+
+                        #If I received the message that I am LEAVE, it is miskilling.
+                        if message.content["id"] == self.id:
+                            #Then I kill myself
+                            sys.exit(0)
 
                         # Remove from ML if possible
                         self.ml_lock.acquire()
