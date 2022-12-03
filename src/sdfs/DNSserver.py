@@ -75,7 +75,9 @@ class DNSserver:
         self.port = DNS_SERVER_PORT
         
         self.coordinator_host = ""
+        self.coordinator_id = -1
         self.standby_host = ""
+        self.standby_id = -1
 
         self.global_unique_id = 0
 
@@ -103,23 +105,27 @@ class DNSserver:
                             self.introducer_port = PORT_FDINTRODUCER
                             self.introducer_id = msg.id
                             
-
+                        if self.coordinator_host == "":
+                            self.coordinator_host = msg.host
+                            self.coordinator_id = msg.id
+                        
+                        elif self.standby_host == "":
+                            self.standby_host = msg.host
+                            self.standby_id = msg.id
+                            
                         content = {
                             "introducer_host": self.introducer_host,
                             "introducer_port": self.introducer_port,
                             "introducer_id": self.introducer_id,
                             "assigned_id": self.global_unique_id,
+                            "coordinator_host": self.coordinator_host,
+                            "coordinator_id": self.coordinator_id
                         }
-                        
-                        if self.coordinator_host == "":
-                            self.coordinator_host = msg.host
-                        elif self.standby_host == "":
-                            self.standby_host = msg.host
                         
                         self.global_unique_id += 1
                         introducer_info = self.__generate_message("RESP_INTRODUCER", content)
                         s.sendto(pickle.dumps(introducer_info), addr)
-                        print(f"Respond to {msg.host} w/: {self.introducer_host}:{self.introducer_port}")
+                        print(f"Respond to {msg.host} w/: {self.introducer_host}:{self.introducer_port} & coordinator host: {self.coordinator_host}")
 
                     # receive a message that there is a processes is down
                     elif msg.message_type == "LEAVE":
@@ -132,6 +138,7 @@ class DNSserver:
                         if crushed == self.coordinator_host:
                             self.coordinator_host = self.standby_host
                             self.standby_host = msg.host
+                            print(f"Now the coordinator is {self.coordinator_host}, {self.coordinator_id}")
 
                     elif msg.message_type == "coordinator":
                         content = {
