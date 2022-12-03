@@ -31,6 +31,7 @@ class IdunnoCoordinator(BaseNode):
         threads.append(Thread(target=self.standby_recv))
         threads.append(Thread(target=self.job_dispatch))
         threads.append(Thread(target=self.job_collection))
+        threads.append(Thread(target=self.failure_recv))
 
         return threads
 
@@ -86,18 +87,18 @@ class IdunnoCoordinator(BaseNode):
 
     def failure_recv(self):
         """Receives failure from DNS (maybe?) and handle worker failure."""
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(("", PORT_COORDINATOR_FAILURE_LISTEN))
-
+            s.listen()
             while True:
-                data, _ = s.recvfrom(4096)
+                conn, _ = s.accept()
+                data = conn.recv(4096)
 
                 if data:
                     message: Message = pickle.loads(data)
                     
                     failed_worker_id = message.content["id"]
-                    print(f"Coordinator received {failed_worker_id} FAILURE message")
                     self.__handle_worker_failure(failed_worker_id)
                     
 
