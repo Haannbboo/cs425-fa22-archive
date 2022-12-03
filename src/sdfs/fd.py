@@ -11,7 +11,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, List, Dict, Tuple, Union, TYPE_CHECKING
 
-from src.config import *
+from .config import *
 from .utils import getLogger, Message, get_host, socket_should_stop
 
 if TYPE_CHECKING:
@@ -400,7 +400,18 @@ class FailureDetector:
                         self.ml_lock.acquire()
                         if message.content["id"] in self.ml:
                             self.ml.pop(message.content["id"], None)
+                            
+                            #send FAILURE message to sdfs by TCP 
+                            failure_message = self.generate_message(
+                                "FAILURE", content={"leaved_id":message.content["id"], "time_stamp": time.time()}
+                            )
+                            #test change socket 
+                            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s1:
+                                s1.connect((self.host, PORT_SDFS_GETFAILURE))
+                                s1.sendall(pickle.dumps(failure_message))
+                                s1.shutdown(socket.SHUT_WR)
                             self.__log_ml_update(message.content["id"], "POP", message)
+                
                         self.ml_lock.release()
 
                     else:
@@ -594,31 +605,38 @@ class FailureDetector:
                         self.delete_pool_remove(id)
                         self.ml_lock.release()
                         continue
-                    self.ml_lock.release()
-                    leave_message = self.generate_message(
-                        "LEAVE", content={"id": id, "time_stamp": time_stamp}
-                    )
-                    self.logger.info(f"Host {self.id}: checker decides to delete {id} at time {curr_time}")
-                    self.delete_pool_remove(id)
-                    self.logger.info(f"Host {self.id}: current delete pool: {self.delete_pool}")
-                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                        self.multicast(leave_message, s, sent_check=False, who="delete_pool_checker")
-                        self.ml_lock.acquire()
-                        self.ml.pop(id)
-                        self.__log_ml_update(id, "POP", leave_message, who="delete_pool_checker")
+                    if id not in self.ml:
+                        #has been removed by multicast LEAVE message
                         self.ml_lock.release()
-
-                        #send to DNS to change the introducer
-                        s.sendto(pickle.dumps(leave_message), (DNS_SERVER_HOST, DNS_SERVER_PORT))
+                        continue
+                    else:
+                        self.ml.pop(id)
+                        self.ml_lock.release()
                         
-                        #send to sdfs by TCP 
-                        failure_message = self.generate_message(
-                            "FAILURE", content={"leaved_id": id, "time_stamp": time_stamp}
+                        leave_message = self.generate_message(
+                            "LEAVE", content={"id": id, "time_stamp": time_stamp}
                         )
-                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                            s.connect((self.host, PORT_SDFS_GETFAILURE))
-                            s.sendall(pickle.dumps(failure_message))
-                            s.shutdown(socket.SHUT_WR)
+                        
+                        self.logger.info(f"Host {self.id}: checker decides to delete {id} at time {curr_time}")
+                        self.delete_pool_remove(id)
+                        self.logger.info(f"Host {self.id}: current delete pool: {self.delete_pool}")
+                       
+                        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                            self.__log_ml_update(id, "POP", leave_message, who="delete_pool_checker")
+                            self.multicast(leave_message, s, sent_check=False, who="delete_pool_checker")
+                            #send to DNS to change the introducer
+                            s.sendto(pickle.dumps(leave_message), (DNS_SERVER_HOST, DNS_SERVER_PORT))
+                            
+                            #send FAILURE message to sdfs by TCP 
+                            failure_message = self.generate_message(
+                                "FAILURE", content={"leaved_id": id, "time_stamp": time_stamp}
+                            )
+                            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s1:
+                                s1.connect((self.host, PORT_SDFS_GETFAILURE))
+                                s1.sendall(pickle.dumps(failure_message))
+                                s1.shutdown(socket.SHUT_WR)
+                        
+                    
 
                         
 

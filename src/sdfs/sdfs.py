@@ -264,7 +264,10 @@ class SDFS:
                 time_stamp = message.content["time_stamp"]
                 print(f"-----SDFS: received id{leaved} leaved at {time_stamp}")
                 self.ft_lock.acquire()
-                self.delete_replicas(leaved)
+                
+                #for demo, attempt there is no re-replication
+                # self.delete_replicas(leaved)
+                
                 self.ft_lock.release()
 
     def delete_replicas(self, leaved_id: int):
