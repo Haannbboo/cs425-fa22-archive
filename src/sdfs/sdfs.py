@@ -577,6 +577,8 @@ class SDFS:
                 return version, fsize
             except socket.timeout:
                 return -1, -1
+            except socket.error:
+                return -1, -1
 
     def multicast(
         self, message: Message, targets: Set[int], port: int, confirm: int = 0, threads: bool = False
