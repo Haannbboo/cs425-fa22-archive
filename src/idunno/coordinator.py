@@ -255,15 +255,17 @@ class IdunnoCoordinator(BaseNode):
     def __write_queries_result(self, queries: List[Query], job: Job) -> bool:
         """Writes result of ``queries`` to output file on sdfs."""
         fname = self.__job_to_sdfs_fname(job)
-        if not os.path.exists(fname) or self.sdfs.exists(fname):
-            # sdfs get if no fname in local
-            success = self.sdfs.get(fname, fname)
-            if not success or not self.__local_file_ready(fname):
-                print(f"[ERROR] Failed to write queries result to sdfsfile {fname}")
-                return False
-        else:
-            # If result file not in SDFS, create it in local
-            open(fname, "wb").close()
+        if not os.path.exists(fname):
+            if self.sdfs.exists(fname):
+                # sdfs get if no fname in local
+                success = self.sdfs.get(fname, fname)
+                if not success or not self.__local_file_ready(fname):
+                    print(f"[ERROR] Failed to write queries result to sdfsfile {fname}")
+                    return False
+            else:
+                # If result file not in SDFS, create it in local
+                open(fname, "wb").close()
+        # If local fname exists, no need to fetch from SDFS because it should be fresh.
 
         result = [f"{query.id}) {self.__query_to_output_key(query)} |--| {query.result}\n" 
                     for query in queries if query.result is not None]
@@ -395,7 +397,8 @@ class IdunnoCoordinator(BaseNode):
         
         queries = QueryTable()
         for fname in sdfs_fname:
-            queries.add_query(job.id, job.name, job.model, fname)
+            if self.sdfs.exists(fname):
+                queries.add_query(job.id, job.name, job.model, fname)
         job.queries = queries
         return job
 
