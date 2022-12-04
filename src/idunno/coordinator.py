@@ -93,14 +93,15 @@ class IdunnoCoordinator(BaseNode):
             s.listen()
             while True:
                 conn, _ = s.accept()
-                data = conn.recv(4096)
+                with conn:
+                    data = conn.recv(4096)
 
-                if data:
-                    message: Message = pickle.loads(data)
-                    
-                    failed_worker_id = message.content["id"]
-                    print(f"Coordinator received {failed_worker_id} FAILURE message")
-                    self.__handle_worker_failure(failed_worker_id)
+                    if data:
+                        message: Message = pickle.loads(data)
+                        
+                        failed_worker_id = message.content["id"]
+                        print(f"Coordinator received {failed_worker_id} FAILURE message")
+                        self.__handle_worker_failure(failed_worker_id)
                     
 
     def client_server(self):
