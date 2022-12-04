@@ -14,6 +14,9 @@ class Query:
     result: str = None  # inference result
     processing_time: float = 0.0
     scheduled_time: float = 0.0  # when this query is scheduled by coordinator
+    complete_time: float = 0.0  # when this query is completed
+
+    expected_complete_time: float = 0.0  # estimated complete time
 
     def __eq__(self, __o: object) -> bool:
         return self.id == __o.id
@@ -73,9 +76,10 @@ class QueryTable:
 
     def mark_as_completed(self, queries: List[Query]):
         for query in queries:
+            query.complete_time = time.time()
             self.completed_queries.append(query)
             self.scheduled_queries.remove(query)
-        self.completed_queries.sort(key=lambda query: query.scheduled_time, reverse=True)
+        self.completed_queries.sort(key=lambda query: query.complete_time, reverse=True)
 
     def mark_scheduled_queries_as_idle(self, queries: List[Query]):
         for query in queries:
@@ -101,6 +105,15 @@ class Job:
     completed: bool = False
 
     @property
+    def avg_inf_time(self) -> float:
+        if self.completed == 0:
+            return 0.3
+        sum_ptime = 0
+        for query in self.queries.completed_queries:
+            sum_ptime += query.processing_time
+        return sum_ptime / self.completed
+
+    @property
     def rate(self) -> float:
         """Number of queries / second"""
         if self.queries.completed == 0:
@@ -108,12 +121,8 @@ class Job:
         # Count queries that started within last 10 seconds
         completed = 0
         now = time.time()
-        for query in self.queries.completed_queries:
-            if now - query.scheduled_time < 10:
-                completed += 1
-            # else:
-            #     break  # sorted in descending order by scheduled_time
-        return completed / 10
+                
+        return self.queries.completed / (time.time() - self.start_time)
 
 
 class JobTable:

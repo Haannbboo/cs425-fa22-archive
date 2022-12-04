@@ -180,6 +180,8 @@ class IdunnoCoordinator(BaseNode):
                         else:
                             queries = job.queries.get_idle_queries(job.batch_size)
                             ack = self.send_queries(queries, conn)
+                            for query in queries:
+                                query.expected_complete_time = time.time() + job.batch_size * job.avg_inf_time + 0.3
                             if ack:  # if worker has received works to do
                                 job.queries.mark_as_scheduled(queries)
                                 self.jobs.placement[message.id] = queries
@@ -227,9 +229,12 @@ class IdunnoCoordinator(BaseNode):
         if len(queries) == 0:
             return False
 
+        print(f"Current time: {round(time.time(), 1)}, actual complete time: {round(queries[0].complete_time)}")
+
         job: Job = self.jobs[queries[0].job_id]
         # Write first, then update JobTable.
         # Check result file upon completion and remove duplicates.
+        
         if self.__write_queries_result(queries, job) and self.__notify_queries_completed(queries):
             job.queries.mark_as_completed(queries)
 
@@ -237,7 +242,7 @@ class IdunnoCoordinator(BaseNode):
             self.__drop_result_duplicates(job)  # there should only be duplicates
             if self.__notify_client_job_completed(job):  # if client confirmed job completion
                 self.__handle_job_complete(job)
-
+        print(f"Finish processing: {round(time.time(), 1)}")
         return True
 
     def __admission_control(self, new_job: Job) -> bool:
