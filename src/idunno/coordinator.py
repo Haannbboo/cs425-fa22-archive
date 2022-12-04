@@ -73,7 +73,8 @@ class IdunnoCoordinator(BaseNode):
                                 continue
                             else:
                                 job.queries.completed_queries.append(query)
-                            
+
+                        self.__update_query_rate_difference()
                         job.queries.completed_queries.sort(key=lambda query: query.scheduled_time, reverse=True)
                         confirm = self.__generate_message("UPDATE CONFIRM")
                         conn.sendall(pickle.dumps(confirm))
@@ -161,6 +162,11 @@ class IdunnoCoordinator(BaseNode):
                         resp = self.__generate_message("RESP completed", content={"resp": completed})
                         conn.sendall(pickle.dumps(resp))
 
+                    elif message.message_type == "rate_diff":
+                        # Return the list of rate differences and timestamps stored in self.jobs
+                        rate_diff, timestamps = self.jobs.rate_diff, self.jobs.rate_diff_timestamps
+                        resp = self.__generate_message("RESP rate_diff", content={"rate_diff": rate_diff, "timestamps": timestamps})
+                        conn.sendall(pickle.dumps(resp))
 
     def job_dispatch(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -232,7 +238,7 @@ class IdunnoCoordinator(BaseNode):
         if len(queries) == 0:
             return False
 
-        print(f"Current time: {round(time.time(), 1)}, actual complete time: {round(queries[0].complete_time)}")
+        # print(f"Current time: {round(time.time(), 1)}, actual complete time: {round(queries[0].complete_time)}")
 
         job: Job = self.jobs[queries[0].job_id]
         # Write first, then update JobTable.
@@ -240,12 +246,13 @@ class IdunnoCoordinator(BaseNode):
         
         if self.__write_queries_result(queries, job) and self.__notify_queries_completed(queries):
             job.queries.mark_as_completed(queries)
+            self.__update_query_rate_difference()
 
         if self.__job_completed(job):
             self.__drop_result_duplicates(job)  # there should only be duplicates
             if self.__notify_client_job_completed(job):  # if client confirmed job completion
                 self.__handle_job_complete(job)
-        print(f"Finish processing: {round(time.time(), 1)}")
+        # print(f"Finish processing: {round(time.time(), 1)}")
         return True
 
     def __admission_control(self, new_job: Job) -> bool:
@@ -425,3 +432,13 @@ class IdunnoCoordinator(BaseNode):
     def __generate_message(self, m_type: str, content: Any = None) -> Message:
         """Generates message for all communications."""
         return Message(self.sdfs.id, self.sdfs.host, self.sdfs.port, time.time(), m_type, content)
+
+    def __get_query_rate_difference(self) -> float:
+        """Calculates query rate difference. Returns a float for percentage."""
+        rates = [job.rate for job in self.jobs]
+        return (max(rates) - min(rates)) / max(rates) * 100
+
+    def __update_query_rate_difference(self):
+        rate_diff = self.__get_query_rate_difference()
+        self.jobs.rate_diff.append(rate_diff)
+        self.jobs.rate_diff_timestamps.append(time.time())

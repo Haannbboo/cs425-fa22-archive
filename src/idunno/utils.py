@@ -132,6 +132,10 @@ class JobTable:
         self.jobs: List[Job] = []
         self.placement: Dict[int, List[Query]] = {}
 
+        # Statistics
+        self.rate_diff: List[float] = []
+        self.rate_diff_timestamps: List[float] = []
+
         self.max_job_id = 0
 
     def __contains__(self, job_id: int) -> bool:
