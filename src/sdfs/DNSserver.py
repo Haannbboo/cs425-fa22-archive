@@ -138,8 +138,8 @@ class DNSserver:
                         if crushed == self.coordinator_id:
                             self.coordinator_host = self.standby_host
                             self.coordinator_id = self.standby_id
-                            self.standby_host = msg.host
-                            self.standby_id = msg.id
+                            self.standby_host = ""
+                            self.standby_id = -1
                             print(f"Now the coordinator is {self.coordinator_host}, {self.coordinator_id}")
 
                     elif msg.message_type == "coordinator":
