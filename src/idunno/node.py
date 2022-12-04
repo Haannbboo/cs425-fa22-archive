@@ -50,7 +50,7 @@ class IdunnoNode(BaseNode):
         print(f"... Finish pretrain model: {model_name}")
     
     def coordinator_failure_handler(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(("", PORT_WORKER_FAILURE_LISTEN))
             s.listen()
@@ -186,5 +186,6 @@ class IdunnoNode(BaseNode):
         threads.append(threading.Thread(target=self.receive_train_request))
         threads.append(threading.Thread(target=self.turnON))
         threads.append(threading.Thread(target=self.request_job))
+        threads.append(threading.Thread(target=self.coordinator_failure_handler))
         
         return threads

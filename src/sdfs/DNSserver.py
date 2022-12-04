@@ -103,11 +103,11 @@ class DNSserver:
                         if self.introducer_host == "":
                             self.introducer_host = msg.host
                             self.introducer_port = PORT_FDINTRODUCER
-                            self.introducer_id = msg.id
+                            self.introducer_id = self.global_unique_id
                             
                         if self.coordinator_host == "":
                             self.coordinator_host = msg.host
-                            self.coordinator_id = msg.id
+                            self.coordinator_id = self.global_unique_id
                         
                         elif self.standby_host == "":
                             self.standby_host = msg.host
