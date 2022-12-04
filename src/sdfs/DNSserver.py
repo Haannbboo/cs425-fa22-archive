@@ -119,7 +119,7 @@ class DNSserver:
                             "introducer_id": self.introducer_id,
                             "assigned_id": self.global_unique_id,
                             "coordinator_host": self.coordinator_host,
-                            "coordinator_id": self.coordinator_id
+                            "coordinator_id": self.coordinator_id,
                         }
                         
                         self.global_unique_id += 1
@@ -137,12 +137,15 @@ class DNSserver:
                             print(f"Now the introducer is {self.introducer_host}, {self.introducer_id}")
                         if crushed == self.coordinator_host:
                             self.coordinator_host = self.standby_host
+                            self.coordinator_id = self.standby_id
                             self.standby_host = msg.host
+                            self.standby_id = msg.id
                             print(f"Now the coordinator is {self.coordinator_host}, {self.coordinator_id}")
 
                     elif msg.message_type == "coordinator":
                         content = {
                             "host": self.coordinator_host,
+                            "id": self.coordinator_id
                         }
                         print(f"Receive message to give coordinator host: {self.coordinator_host} from {msg.host}")
                         coordinator_info = self.__generate_message("RESP_COORDINATOR", content)

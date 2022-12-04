@@ -661,12 +661,28 @@ class FailureDetector:
                             #otherwise send FAILURE message to worker by TCP if it is the coordinator's failure
                             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s2:
                                 print(f"id:{id} vs. {self.coordinator_id} vs. coordinator_host: {self.coordinator}")
+                                if self.coordinator_id == -1:
+                                    message = self.ask_dns_fd()
+                                    self.coordinator = message.content["host"]
+                                    self.coordinator_id = message.content["id"]
+                                    print(f"after ask dns, the coordinator is {self.coordinator} and id is {self.coordinator_id}")
+                                
                                 if id != self.coordinator_id:
                                     s2.connect((self.coordinator, PORT_COORDINATOR_FAILURE_LISTEN))
                                 else:
                                     s2.connect((self.host, PORT_WORKER_FAILURE_LISTEN))
+                                    self.coordinator_id = -1
+                                    self.coordinator = ""
                                 s2.sendall(pickle.dumps(failure_message))
                                 s2.shutdown(socket.SHUT_WR)
+    def ask_dns_fd(self):
+        message = self.generate_message("coordinator")
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            # Send udp ``message`` to dns server
+            s.sendto(pickle.dumps(message), (DNS_SERVER_HOST, DNS_SERVER_PORT))
+            packet, _ = s.recvfrom(4 * 1024)
+            resp: Message = pickle.loads(packet)
+            return resp
                             
 
     def delete_pool_remove(self, id):
