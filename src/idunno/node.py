@@ -60,9 +60,24 @@ class IdunnoNode(BaseNode):
                 with conn:
                     data = conn.recv(4096)
                     message: Message = pickle.loads(data)
-                    failed = message.content["id"]
-                    print(f"Worker received FAILURE message: {failed}")
+                    failed = message.content["host"]
+                    print(f"Worker receive failed coordinator {failed}")
+                    temp = self.coordinator_host
+                    while temp == self.coordinator_host:
+                        resp: Message = self.ask_dns_host()
+                        self.coordinator_host = resp.content["host"]
                     
+                    print(f"Worker's new coordinator is {self.coordinator_host}")
+    
+    def ask_dns_worker(self):
+        message = self.generate_message("coordinator")
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            # Send udp ``message`` to dns server
+            s.sendto(pickle.dumps(message), (DNS_SERVER_HOST, DNS_SERVER_PORT))
+            packet, _ = s.recvfrom(4 * 1024)
+            resp: Message = pickle.loads(packet)
+            return resp
+                                          
     
     #only receive START message to turn IDLE to RUNNING
     def turnON(self):
