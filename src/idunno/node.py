@@ -60,17 +60,15 @@ class IdunnoNode(BaseNode):
                 with conn:
                     data = conn.recv(4096)
                     message: Message = pickle.loads(data)
-                    failed = message.content["host"]
+                    failed = message.content["id"]
                     print(f"Worker receive failed coordinator {failed}")
                     temp = self.coordinator_host
                     while temp == self.coordinator_host:
-                        resp: Message = self.ask_dns_host()
+                        resp: Message = self.ask_dns_worker()
                         self.coordinator_host = resp.content["host"]
-                    
-                    print(f"Worker's new coordinator is {self.coordinator_host}")
     
     def ask_dns_worker(self):
-        message = self.generate_message("coordinator")
+        message = self.__generate_message("coordinator")
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             # Send udp ``message`` to dns server
             s.sendto(pickle.dumps(message), (DNS_SERVER_HOST, DNS_SERVER_PORT))
@@ -133,7 +131,6 @@ class IdunnoNode(BaseNode):
         queries = []
         while True:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                #if coordinator fail, what to do
             
                 if self.worker_state == IDLE or self.coordinator_host == "" or self.sdfs.id == -1:
                     time.sleep(0.5)
@@ -147,7 +144,7 @@ class IdunnoNode(BaseNode):
                 except socket.error as e:
                     #send message to DNS to get new coordinator host id?
                     print(f"MY STATE {self.worker_state}")
-                    raise e from None
+                    continue
                 
                 try:
                     s.settimeout(2)
@@ -168,8 +165,8 @@ class IdunnoNode(BaseNode):
                         self.worker_state = IDLE
                         print("RECEIVE STOPPPPPPP")
                 except socket.error as e:
-                    print("ERR socket 2")
-                    raise e from None
+                    # print("ERR socket 2")
+                    # raise e from None
                     continue
                 self.job_complete(queries)      
                 
@@ -184,8 +181,7 @@ class IdunnoNode(BaseNode):
                 s.sendall(pickle.dumps(complete_message))
                 s.shutdown(socket.SHUT_WR)
             except socket.error:
-                #send message to DNS to get new coordinator host id?
-                print("[ERROR] Can't send JOB COMPLETE")
+                # print("[ERROR] Can't send JOB COMPLETE")
                 return False
         return True
     
