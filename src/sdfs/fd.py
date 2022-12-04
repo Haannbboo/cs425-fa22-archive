@@ -417,11 +417,18 @@ class FailureDetector:
                             failure_message = self.generate_message(
                                 "FAILURE", content={"id":message.content["id"], "time_stamp": time.time()}
                             )
-                            #test change socket 
                             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s1:
                                 s1.connect((self.host, PORT_SDFS_GETFAILURE))
                                 s1.sendall(pickle.dumps(failure_message))
                                 s1.shutdown(socket.SHUT_WR)
+                            
+                            #if coordinator leave, send FAILURE message to worker by TCP
+                            if message.content["id"] == self.coordinator_id:
+                                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s3:
+                                    s3.connect((self.host, PORT_WORKER_FAILURE_LISTEN))
+                                    s3.sendall(pickle.dumps(failure_message))
+                                    s3.shutdown(socket.SHUT_WR)
+                            
                             self.__log_ml_update(message.content["id"], "POP", message)
                 
                         self.ml_lock.release()
@@ -651,18 +658,15 @@ class FailureDetector:
                                 s1.shutdown(socket.SHUT_WR)
                             
                             #send FAILURE message to coordinator by TCP if it is not the coordinator's failure
-                            if id != self.coordinator_id:
-                                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s2:
+                            #otherwise send FAILURE message to worker by TCP if it is the coordinator's failure
+                            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s2:
+                                if id != self.coordinator_id:
                                     s2.connect((self.coordinator, PORT_COORDINATOR_FAILURE_LISTEN))
-                                    s2.sendall(pickle.dumps(failure_message))
-                                    s2.shutdown(socket.SHUT_WR)
+                                else:
+                                    s2.connect((self.host, PORT_WORKER_FAILURE_LISTEN))
+                                s2.sendall(pickle.dumps(failure_message))
+                                s2.shutdown(socket.SHUT_WR)
                             
-                            
-                        
-                    
-
-                        
-
 
     def delete_pool_remove(self, id):
         self.delete_pool_lock.acquire()

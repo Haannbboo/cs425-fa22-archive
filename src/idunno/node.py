@@ -49,6 +49,21 @@ class IdunnoNode(BaseNode):
         self.model_map[model_name] = (extractor, model)
         print(f"... Finish pretrain model: {model_name}")
     
+    def coordinator_failure_handler(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("", PORT_WORKER_FAILURE_LISTEN))
+            s.listen()
+            
+            while True:
+                conn, _ = s.accept()
+                with conn:
+                    data = conn.recv(4096)
+                    message: Message = pickle.loads(data)
+                    failed = message.content["id"]
+                    print(f"Worker received FAILURE message: {failed}")
+                    
+    
     #only receive START message to turn IDLE to RUNNING
     def turnON(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

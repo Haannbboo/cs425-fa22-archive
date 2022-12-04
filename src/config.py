@@ -18,6 +18,7 @@ PORT_START_WORKING = 10300  # worker listens to this port to know if they can be
 PORT_STANDBY_UPDATE = 10310  # communication between coordinator & standby
 PRE_TRAIN_PORT = 10236
 PORT_COORDINATOR_FAILURE_LISTEN = 10089  # coordinator receives worker failure from this
+PORT_WORKER_FAILURE_LISTEN = 10090
 
 # Test ports #
 PORT_TEST_UDPSERVER = 9213
