@@ -525,7 +525,10 @@ class SDFS:
                 return 0
             if confirm:
                 # wait for confirm
-                data = s.recv(1024)
+                try:
+                    data = s.recv(1024)
+                except socket.error:
+                    return 0
                 confirmation: Message = pickle.loads(data)
                 confirmed = confirmation.message_type.endswith("CONFIRM")
                 if confirmed:
@@ -554,6 +557,8 @@ class SDFS:
                 chunk_message: Message = pickle.loads(data)
                 return chunk_message.content["payload"]
             except socket.timeout:
+                return b""
+            except socket.error:
                 return b""
 
     def read_replica_version(self, sdfsfilename: str, remote_host: str):
