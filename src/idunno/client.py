@@ -78,7 +78,7 @@ class IdunnoClient(BaseNode):
         else:
             return False
 
-    def upload(self, data_dir: str):
+    def upload(self, data_dir: str, n: int):
         if not os.path.exists(data_dir):
             print(f"[ERROR] No such directory: {data_dir}")
             return
@@ -86,8 +86,8 @@ class IdunnoClient(BaseNode):
         data_fpath = [os.path.join(data_dir, fname) for fname in data_files]
         i = 0
         print("... Putting inference dataset to sdfs")
-        with tqdm(total=len(data_files)) as pbar:
-            while i < len(data_files):
+        with tqdm(total=min(len(data_files), n)) as pbar:
+            while i < min(len(data_files), n):
                 confirmed = self.sdfs.put(data_fpath[i], data_files[i])
                 if confirmed:
                     i += 1
@@ -124,7 +124,7 @@ class IdunnoClient(BaseNode):
         Commands:
         =========
         - train [models name]
-        - upload [input directory]
+        - upload [input directory] [n]
         - inference [model name] [input directory] [batch size]
         
         """
@@ -139,10 +139,11 @@ class IdunnoClient(BaseNode):
             elif argv[0] == "train" and len(argv) > 1:
                 #send message to all worker directly? 
                 self.pretrain_request(argv[1])
-            elif argv[0] == "upload" and len(argv) >= 2:
+            elif argv[0] == "upload" and len(argv) >= 3:
                 # upload dataset to sdfs
                 data_dir = argv[1]
-                self.upload(data_dir)
+                n = int(argv[2])
+                self.upload(data_dir, n)
             elif argv[0] == "inference" and len(argv) >= 3:
                 # inference resnet-50 train/ 4
                 #inference specific task by specific model in given batch size

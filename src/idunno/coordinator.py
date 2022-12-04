@@ -204,7 +204,9 @@ class IdunnoCoordinator(BaseNode):
 
                     if message.message_type == "COMPLETE QUERIES":
                         self.recv_completion(message)
-
+                        # ACK completion: avoid congestion
+                        confirmation = self.__generate_message("COMPLETE CONFIRM")
+                        conn.sendall(pickle.dumps(confirmation))
 
     def send_queries(self, queries: List[Query], s: socket.socket) -> bool:
         message = self.__generate_message("RESP QUERIES", content={"queries": queries})
@@ -253,7 +255,8 @@ class IdunnoCoordinator(BaseNode):
     def __write_queries_result(self, queries: List[Query], job: Job) -> bool:
         """Writes result of ``queries`` to output file on sdfs."""
         fname = self.__job_to_sdfs_fname(job)
-        if self.sdfs.exists(fname):
+        if not os.path.exists(fname) or self.sdfs.exists(fname):
+            # sdfs get if no fname in local
             success = self.sdfs.get(fname, fname)
             if not success or not self.__local_file_ready(fname):
                 print(f"[ERROR] Failed to write queries result to sdfsfile {fname}")

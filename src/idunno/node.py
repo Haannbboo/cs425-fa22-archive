@@ -173,17 +173,19 @@ class IdunnoNode(BaseNode):
     def job_complete(self, queries):
         if self.worker_state != RUNNING:
             return False
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            addr = (self.coordinator_host, PORT_COMPLETE_JOB)
-            complete_message = self.__generate_message("COMPLETE QUERIES", content={"queries": queries})
-            try: 
-                s.connect(addr)
-                s.sendall(pickle.dumps(complete_message))
-                s.shutdown(socket.SHUT_WR)
-            except socket.error:
-                # print("[ERROR] Can't send JOB COMPLETE")
-                return False
-        return True
+        complete_message = self.__generate_message("COMPLETE QUERIES", content={"queries": queries})
+        confirmed = self.sdfs.write_to(complete_message, self.coordinator_host, PORT_COMPLETE_JOB)
+        # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        #     addr = (self.coordinator_host, PORT_COMPLETE_JOB)
+        #     complete_message = self.__generate_message("COMPLETE QUERIES", content={"queries": queries})
+        #     try: 
+        #         s.connect(addr)
+        #         s.sendall(pickle.dumps(complete_message))
+        #         s.shutdown(socket.SHUT_WR)
+        #     except socket.error:
+        #         # print("[ERROR] Can't send JOB COMPLETE")
+        #         return False
+        return bool(confirmed)
     
     def __generate_message(self, m_type: str, content: Any = None) -> Message:
         """Generates message for all communications."""
