@@ -428,6 +428,8 @@ class FailureDetector:
                                     s3.connect((self.host, PORT_WORKER_FAILURE_LISTEN))
                                     s3.sendall(pickle.dumps(failure_message))
                                     s3.shutdown(socket.SHUT_WR)
+                                self.coordinator = ""
+                                self.coordinator_id = -1
                             
                             self.__log_ml_update(message.content["id"], "POP", message)
                 
@@ -660,12 +662,11 @@ class FailureDetector:
                             #send FAILURE message to coordinator by TCP if it is not the coordinator's failure
                             #otherwise send FAILURE message to worker by TCP if it is the coordinator's failure
                             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s2:
-                                print(f"id:{id} vs. {self.coordinator_id} vs. coordinator_host: {self.coordinator}")
+                                
                                 if self.coordinator_id == -1:
                                     message = self.ask_dns_fd()
                                     self.coordinator = message.content["host"]
                                     self.coordinator_id = message.content["id"]
-                                    print(f"after ask dns, the coordinator is {self.coordinator} and id is {self.coordinator_id}")
                                 
                                 if id != self.coordinator_id:
                                     s2.connect((self.coordinator, PORT_COORDINATOR_FAILURE_LISTEN))

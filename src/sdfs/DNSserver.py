@@ -111,7 +111,7 @@ class DNSserver:
                         
                         elif self.standby_host == "":
                             self.standby_host = msg.host
-                            self.standby_id = msg.id
+                            self.standby_id = self.global_unique_id
                             
                         content = {
                             "introducer_host": self.introducer_host,
@@ -135,7 +135,7 @@ class DNSserver:
                             self.introducer_port = msg.port
                             self.introducer_id = msg.id
                             print(f"Now the introducer is {self.introducer_host}, {self.introducer_id}")
-                        if crushed == self.coordinator_host:
+                        if crushed == self.coordinator_id:
                             self.coordinator_host = self.standby_host
                             self.coordinator_id = self.standby_id
                             self.standby_host = msg.host
