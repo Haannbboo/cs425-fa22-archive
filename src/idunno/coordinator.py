@@ -227,8 +227,15 @@ class IdunnoCoordinator(BaseNode):
             while True:
                 conn, addr = s.accept()
                 with conn:
-                    data = self.sdfs.recv_message(conn)
-                    message: Message = pickle.loads(data)
+                    try:
+                        data = self.sdfs.recv_message(conn)
+                    except socket.error:
+                        continue
+                    
+                    try:
+                        message: Message = pickle.loads(data)
+                    except EOFError:
+                        continue
 
                     if message.message_type == "COMPLETE QUERIES":
                         self.recv_completion(message)

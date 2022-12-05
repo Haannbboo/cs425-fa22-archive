@@ -510,7 +510,7 @@ class SDFS:
                         multicast_message = self.__generate_message("FT DELETE", content=message.content)
                         self.multicast(multicast_message, ids, PORT_TCP_MASTERSERVER)
 
-    def write_to(self, message: Message, remote_host: str, remote_port: int, confirm: bool = True) -> int:
+    def write_to(self, message: Message, remote_host: str, remote_port: int, confirm: bool = True, timeout: float = None) -> int:
         """Writes ``message`` to address (remote_host, remote_port).
         ``message`` should have ``m_type = REQ WRITE`` and include filename and payload in ``content``.
 
@@ -526,6 +526,7 @@ class SDFS:
             if confirm:
                 # wait for confirm
                 try:
+                    s.settimeout(timeout)
                     data = s.recv(1024)
                 except socket.error:
                     return 0

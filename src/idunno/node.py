@@ -174,7 +174,7 @@ class IdunnoNode(BaseNode):
         if self.worker_state != RUNNING:
             return False
         complete_message = self.__generate_message("COMPLETE QUERIES", content={"queries": queries})
-        confirmed = self.sdfs.write_to(complete_message, self.coordinator_host, PORT_COMPLETE_JOB)
+        confirmed = self.sdfs.write_to(complete_message, self.coordinator_host, PORT_COMPLETE_JOB, timeout=5)
         # with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         #     addr = (self.coordinator_host, PORT_COMPLETE_JOB)
         #     complete_message = self.__generate_message("COMPLETE QUERIES", content={"queries": queries})
