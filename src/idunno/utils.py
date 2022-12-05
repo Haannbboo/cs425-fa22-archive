@@ -87,9 +87,12 @@ class QueryTable:
 
     def mark_as_completed(self, queries: List[Query]):
         for query in queries:
-            query.complete_time = time.time()
-            self.completed_queries.append(query)
-            self.scheduled_queries.remove(query)
+            try: 
+                self.scheduled_queries.remove(query)
+                query.complete_time = time.time()
+                self.completed_queries.append(query)
+            except ValueError:
+                continue
         self.completed_queries.sort(key=lambda query: query.complete_time, reverse=True)
 
     def mark_scheduled_queries_as_idle(self, queries: List[Query]):
