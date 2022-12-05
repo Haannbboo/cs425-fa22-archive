@@ -154,12 +154,12 @@ class IdunnoNode(BaseNode):
                         queries: List[Query] = message.content["queries"]
                         # s.sendall(b'1') #ack
                         for query in queries:
-                            query.scheduled_time = time.time()
+                            start = time.time()
                             fname = query.input_file
                             self.sdfs.get(fname, fname)
                             self.inference_result(query)
                             end = time.time()
-                            query.processing_time = end - query.scheduled_time
+                            query.processing_time = end - start
                             os.remove(fname)
                     elif message.message_type == "STOP":
                         self.worker_state = IDLE

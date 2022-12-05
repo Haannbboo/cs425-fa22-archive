@@ -36,11 +36,14 @@ class IdunnoCoordinator(BaseNode):
         return threads
 
     def submit_job(self, job: Job) -> bool:
+        """Each new ``job`` goes through this procedure to be added to the cluster."""
         if not self.__admission_control(job):
             return False
 
         if not self.__notify_new_job(job):
             return False
+
+        job.start_time = time.time()
         self.jobs.append(job)
         
         # Tell avaialble workers that a new job arrived,
@@ -168,6 +171,12 @@ class IdunnoCoordinator(BaseNode):
                         resp = self.__generate_message("RESP rate_diff", content={"rate_diff": rate_diff, "timestamps": timestamps})
                         conn.sendall(pickle.dumps(resp))
 
+                    elif message.message_type == "time_start":
+                        resp_content = {job.name: job.queries.earliest_schedule_time - job.start_time for job in self.jobs}
+                        resp = self.__generate_message("RESP time_start", content={"resp": resp_content})
+                        conn.sendall(pickle.dumps(resp))
+                        
+
     def job_dispatch(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -186,6 +195,8 @@ class IdunnoCoordinator(BaseNode):
                             self.available_workers.append(message.id)
                         else:
                             queries = job.queries.get_idle_queries(job.batch_size)
+                            for query in queries:
+                                query.scheduled_time = time.time()
                             ack = self.send_queries(queries, conn)
                             for query in queries:
                                 query.expected_complete_time = time.time() + job.batch_size * job.avg_inf_time + 0.3

@@ -48,6 +48,18 @@ class QueryTable:
         """Runing count, since the start of the model."""
         return len(self.completed_queries) + len(self.scheduled_queries)
 
+    @property
+    def earliest_schedule_time(self) -> float:
+        """Timestamp when the first query is scheduled."""
+        min_time = float('inf')
+        for query in self.scheduled_queries:
+            if query.scheduled_time < min_time:
+                min_time = query.scheduled_time
+        for query in self.completed_queries:
+            if query.scheduled_time < min_time:
+                min_time = query.scheduled_time
+        return min_time
+
     def add_query(self, job_id: int, job_name: str, model_name: str, sdfsfname: str):
         new_query = Query(self.max_query_id, job_id, job_name, model_name, sdfsfname)
         self.max_query_id += 1
@@ -70,7 +82,6 @@ class QueryTable:
 
     def mark_as_scheduled(self, queries: List[Query]):
         for query in queries:
-            query.scheduled_time = time.time()
             self.scheduled_queries.append(query)
             self.hold_queries.remove(query)
 

@@ -242,17 +242,22 @@ class IdunnoClient(BaseNode):
                 resp: Message = self.write_with_resp(message, to_host, to_port)
                 rate_diff: List[float] = resp.content["rate_diff"]
                 timestamps: List[float] = resp.content["timestamps"]
-                # if len(timestamps) > 0:
-                #     t0 = min(timestamps)
-                #     for i in range(len(timestamps)):
-                #         timestamps[i] -= t0
 
                 import matplotlib.pyplot as plt
-                data = list(zip(timestamps, rate_diff))
                 plt.scatter(timestamps, rate_diff)
                 plt.xlabel("Time(s)")
                 plt.ylabel("Query rate difference (%)")
                 plt.savefig("plot_diff.png")
+
+            elif argv[0] == "time" and len(argv) >= 2 and argv[1] == "start":
+                # Calculates the time elasped between job submission and earliest scheduled time.
+                # This is point 1b in the report. 
+                message = self.__generate_message("time_start")
+                to_host, to_port = self.__get_coordinator_addr()
+                resp: Message = self.write_with_resp(message, to_host, to_port)
+                schedule_time = resp.content["resp"]
+                for job_name in schedule_time:
+                    print(f"{job_name}: {schedule_time[job_name]}")
 
             ### ML commands
             elif argv[0] == "join":
