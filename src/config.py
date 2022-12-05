@@ -6,7 +6,7 @@ PORT_FDUPDATE = 9000  # Failure detector update port
 PORT_FDINTRODUCER = 8887  # Introducer port
 PORT_SDFS_GETFAILURE = 9001 #where sdfs get failure message
 
-DNS_SERVER_HOST = "fa22-cs425-1310.cs.illinois.edu"
+DNS_SERVER_HOST = "fa22-cs425-1301.cs.illinois.edu"
 DNS_SERVER_PORT = 8769
 
 ### Idunno configuration ##
