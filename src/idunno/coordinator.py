@@ -134,6 +134,17 @@ class IdunnoCoordinator(BaseNode):
                         else:
                             resp = self.__generate_message("RESP C2", content={"resp": ptime})
                         conn.sendall(pickle.dumps(resp))
+
+                    elif message.message_type == "C4":
+                        n: int = message.content["n"]
+                        job_name: str = message.content["job_name"]
+
+                        result = self.__get_processing_result(job_name, n)
+                        if result is None:
+                            resp = self.__generate_message("ERROR")
+                        else:
+                            resp = self.__generate_message("RESP C4", content={"resp": result})
+                        conn.sendall(pickle.dumps(resp))
                     
                     elif message.message_type == "C5":
                         placement = self.__get_job_placement()
@@ -385,7 +396,7 @@ class IdunnoCoordinator(BaseNode):
             return host, PORT_STANDBY_UPDATE
 
     ### Client side commands
-    def __get_processing_time(self, job_name: int) -> List[float]:  # command C2
+    def __get_processing_time(self, job_name: str) -> List[float]:  # command C2
         job: Job = self.jobs.get_job_by_name(job_name)
         if job is None:
             return None
@@ -397,6 +408,15 @@ class IdunnoCoordinator(BaseNode):
         # Output: vm -> job name
         placement = {k: v[0].job_name for k, v in self.jobs.placement.items() if len(v) > 0}
         return placement
+    
+    def __get_processing_result(self, job_name: str, n: int) -> List:
+        job: Job = self.jobs.get_job_by_name(job_name)
+        if job is None:
+            return None
+        queries = job.queries.completed_queries[:n]
+        ret = [(query.complete_time, query.input_file, query.result) for query in queries]
+        return ret
+        
 
     def __get_processing_rate(self) -> Dict[str, List]:  # command C1
         return {job.name: [job.queries.processed, job.rate] for job in self.jobs if job.running}

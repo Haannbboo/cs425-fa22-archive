@@ -4,6 +4,7 @@ from typing import Any, Union, List , Dict
 import pickle
 import threading
 import os
+from datetime import datetime
 import numpy as np
 from tqdm import tqdm
 
@@ -207,6 +208,26 @@ class IdunnoClient(BaseNode):
                 average, std, median = np.average(ptime), np.std(ptime), np.median(ptime)
                 percentiles = np.percentile(ptime, [90, 95, 99])
                 print(f"Processing time: average {round(average, 4)}\tstd {round(std, 4)}\tmedian {round(median, 4)}\t90% {round(percentiles[0], 4)}\t95% {round(percentiles[1], 4)}\t99% {round(percentiles[2], 4)}")
+            
+            elif argv[0] == "C4" and len(argv) >= 2:
+                # Show recent 10 queries and its results
+                n = 10
+                if len(argv) >= 3:
+                    n = int(argv[2])
+                job_name = argv[1]
+                message = self.__generate_message("C4", content={"n": n, "job_name": job_name})
+                to_host, to_port = self.__get_coordinator_addr()
+                resp: Message = self.write_with_resp(message, to_host, to_port)
+                
+                if resp.message_type == "ERROR":
+                    print(f"[ERROR] No model with name: {job_name}")
+                    continue
+
+                # pretty print
+                content = resp.content["resp"]
+                print(f"Last [{n}] result for: {job_name}")
+                for res in content:
+                    print(f"[{datetime.fromtimestamp(float(res[0]))}] {res[1]} ==> {res[2]}")
             
             ### Useful commands
             elif argv[0] == "jobs":

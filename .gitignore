@@ -6,5 +6,6 @@ sdfs
 *.log
 *.txt
 *.JPEG
+*.png
 train
 *.tmp

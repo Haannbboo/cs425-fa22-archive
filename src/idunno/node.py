@@ -38,7 +38,7 @@ class IdunnoNode(BaseNode):
                     if resp.content["host"] != "":
                         self.coordinator_host = resp.content["host"]
                 else:
-                    print(f"Received coordinator host from dns: {self.coordinator_host}")
+                    # print(f"Received coordinator host from dns: {self.coordinator_host}")
                     break
                 time.sleep(0.5)
     
@@ -92,7 +92,7 @@ class IdunnoNode(BaseNode):
                     if message.message_type == "START":
                         self.coordinator_host = message.host
                         self.worker_state = RUNNING
-                        print("I am running -----")
+                        print("... Received RUNNING from coordinator")
     
     #only receive train request
     def receive_train_request(self):
@@ -143,7 +143,7 @@ class IdunnoNode(BaseNode):
                     s.shutdown(socket.SHUT_WR)
                 except socket.error as e:
                     #send message to DNS to get new coordinator host id?
-                    print(f"MY STATE {self.worker_state}")
+                    # print(f"MY STATE {self.worker_state}")
                     continue
                 
                 try:
@@ -163,7 +163,7 @@ class IdunnoNode(BaseNode):
                             os.remove(fname)
                     elif message.message_type == "STOP":
                         self.worker_state = IDLE
-                        print("RECEIVE STOPPPPPPP")
+                        print("... Received STOP from coordinator")
                 except socket.error as e:
                     # print("ERR socket 2")
                     # raise e from None
