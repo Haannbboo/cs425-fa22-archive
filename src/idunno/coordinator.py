@@ -434,9 +434,10 @@ class IdunnoCoordinator(BaseNode):
         job.output_file = model_name  # for now
         
         queries = QueryTable()
-        for fname in sdfs_fname:
-            if self.sdfs.exists(fname):
-                queries.add_query(job.id, job.name, job.model, fname)
+        for _ in range(10):
+            for fname in sdfs_fname:
+                if self.sdfs.exists(fname):
+                    queries.add_query(job.id, job.name, job.model, fname)
         job.queries = queries
         return job
 
